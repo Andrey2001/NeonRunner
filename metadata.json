@@ -1,0 +1,6 @@
+{
+  "name": "Neon Depth Runner",
+  "description": "An infinite 3D runner where you dodge obstacles and collect points in a neon-lit futuristic world.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
