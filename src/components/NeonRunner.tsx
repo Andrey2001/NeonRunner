@@ -10,13 +10,14 @@ interface GameProps {
   onScoreUpdate: (score: number, processors: number) => void;
   onGameOver: () => void;
   onLifeLost: (lives: number) => void;
+  onQuit: () => void;
   onTogglePause: () => void;
   lives: number;
   maxLives: number;
   isPaused: boolean;
 }
 
-export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onLifeLost, onTogglePause, lives, maxLives, isPaused }) => {
+export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onLifeLost, onQuit, onTogglePause, lives, maxLives, isPaused }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const isPausedRef = useRef(isPaused);
   
@@ -66,10 +67,10 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
   const [activeSlow, setActiveSlow] = useState(false);
 
   // Use refs for callbacks to avoid re-triggering the setup effect
-  const callbacksRef = useRef({ onScoreUpdate, onGameOver, onLifeLost });
+  const callbacksRef = useRef({ onScoreUpdate, onGameOver, onLifeLost, onQuit });
   useEffect(() => {
-    callbacksRef.current = { onScoreUpdate, onGameOver, onLifeLost };
-  }, [onScoreUpdate, onGameOver, onLifeLost]);
+    callbacksRef.current = { onScoreUpdate, onGameOver, onLifeLost, onQuit };
+  }, [onScoreUpdate, onGameOver, onLifeLost, onQuit]);
 
   // Keyboard & Touch controls
   const touchStartRef = useRef<{ x: number, y: number } | null>(null);
@@ -603,6 +604,18 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
           }));
           mesh.userData = { type: 'obstacle', isLow: true };
           mesh.position.set(lane * GAME_CONFIG.LANE_WIDTH, 0.9, GAME_CONFIG.SPAWN_Z);
+          
+          // Spawn CPU over every second jump
+          if (Math.random() > 0.4) {
+            const val = 100;
+            const cpu = createProcessorMesh(1.5, 0xfacc15, val);
+            cpu.rotation.x = -Math.PI / 2.5;
+            cpu.position.set(lane * GAME_CONFIG.LANE_WIDTH, 2.8, GAME_CONFIG.SPAWN_Z);
+            cpu.userData = { type: 'point', value: val };
+            gr.scene.add(cpu);
+            gr.points.push(cpu as THREE.Mesh);
+          }
+
           gr.scene.add(mesh);
           gr.obstacles.push(mesh as THREE.Mesh);
           gr.lastSpawnZ[i] = currentZ;
@@ -625,18 +638,24 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
 
       if (type === 'obstacle') {
         const rand = Math.random();
-        const isTall = rand > 0.7;
+        const isTall = rand > 0.8;
         const isLow = !isTall && rand > 0.3;
+        const isMed = !isTall && !isLow;
         
         let geometry: THREE.BufferGeometry;
+        let h = 4;
         if (isTall) {
           geometry = new THREE.BoxGeometry(2.5, 12, 2.5);
           userData.isTall = true;
+          h = 12;
         } else if (isLow) {
           geometry = new THREE.BoxGeometry(2.5, 1.5, 2.5);
           userData.isLow = true;
+          h = 1.5;
         } else {
-          geometry = new THREE.BoxGeometry(2.5, 4, 2.5);
+          geometry = new THREE.BoxGeometry(2.5, 4, 3.5);
+          userData.isMed = true;
+          h = 4;
         }
         
         const color = GAME_CONFIG.COLORS.OBSTACLE;
@@ -646,7 +665,21 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
           emissiveIntensity: 1,
           roughness: 0.2
         }));
-        mesh.position.y = isTall ? 6 : (isLow ? 0.75 : 2);
+        mesh.position.y = h / 2;
+
+        // Spawn CPU above jumpable obstacles
+        if (isLow || isMed) {
+          if (Math.random() > 0.4) {
+            const val = 100;
+            const size = isMed ? 1.8 : 1.2;
+            const cpu = createProcessorMesh(size, 0xfacc15, val);
+            cpu.rotation.x = -Math.PI / 2.5;
+            cpu.position.set(lane * GAME_CONFIG.LANE_WIDTH, h + 1.5, GAME_CONFIG.SPAWN_Z);
+            cpu.userData = { type: 'point', value: val };
+            gr.scene.add(cpu);
+            gr.points.push(cpu as THREE.Mesh);
+          }
+        }
       } else if (type === 'point') {
         const rand = Math.random();
         let size: number;
@@ -740,8 +773,12 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
 
         // Jump physics
         if (gr.isJumping) {
-          gr.player.position.y += gr.jumpVelocity;
-          gr.jumpVelocity += GAME_CONFIG.GRAVITY;
+          const jumpTimeScale = gr.modifierSlow > 0 ? 0.5 : 1.0;
+          const jumpStep = delta * 60 * jumpTimeScale;
+          
+          gr.player.position.y += gr.jumpVelocity * jumpStep;
+          gr.jumpVelocity += GAME_CONFIG.GRAVITY * jumpStep;
+          
           if (gr.player.position.y <= 0) {
             gr.player.position.y = 0;
             gr.isJumping = false;
@@ -836,8 +873,10 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
           if (gr.invulnerable <= 0 && dx < 2.0 && dz < 2.0) {
             // Collision check
             let hit = true;
-            if (obs.userData.isLow && gr.player.position.y > 1.5) {
+            if (obs.userData.isLow && gr.player.position.y > 1.8) {
               hit = false; // Jumped over low obstacle
+            } else if (obs.userData.isMed && gr.player.position.y > 3.8) {
+              hit = false; // Jumped over medium obstacle
             } else if (obs.userData.isTall) {
               hit = true; // Cannot jump over tall
             }
@@ -960,107 +999,137 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
 
   return (
     <div className="w-full h-full relative bg-slate-950 overflow-hidden font-sans">
-      {/* Three.js Canvas Container - Must be empty for React safety */}
+      {/* Three.js Canvas Container */}
       <div ref={containerRef} className="absolute inset-0 z-0" />
       
       <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_150px_rgba(0,0,0,0.8)] z-[2]" />
       
-      <div className="absolute top-0 left-0 w-full z-10 p-8 flex justify-between items-start pointer-events-none select-none">
-        <div className="flex flex-col gap-2">
-          <div className="bg-black/40 backdrop-blur-md border-l-4 border-cyan-400 px-6 py-3 rounded-r-xl">
-            <p className="text-[10px] uppercase tracking-widest text-cyan-400 font-bold">Distance</p>
-            <p className="text-4xl font-black tabular-nums tracking-tighter text-white">
+      {/* GAME UI OVERLAY */}
+      <div className="absolute inset-0 z-10 pointer-events-none select-none">
+        
+        {/* TOP LEFT: STATS */}
+        <div className="absolute top-4 left-4 md:top-8 md:left-8 flex flex-col gap-2">
+          <div className="bg-black/60 backdrop-blur-md border-l-4 border-cyan-400 px-3 md:px-6 py-1.5 md:py-3 rounded-r-xl">
+            <p className="text-[7px] md:text-[10px] uppercase tracking-widest text-cyan-400 font-black">Distance</p>
+            <p className="text-xl md:text-3xl font-black tabular-nums tracking-tighter text-white">
               {distance.toLocaleString()}m
             </p>
           </div>
-          <div className="bg-black/40 backdrop-blur-md border-l-4 border-yellow-400 px-6 py-3 rounded-r-xl">
-            <p className="text-[10px] uppercase tracking-widest text-yellow-400 font-bold">CPUs Collected</p>
-            <p className="text-4xl font-black tabular-nums tracking-tighter text-white">
+          <div className="bg-black/60 backdrop-blur-md border-l-4 border-yellow-400 px-3 md:px-6 py-1.5 md:py-3 rounded-r-xl">
+            <p className="text-[7px] md:text-[10px] uppercase tracking-widest text-yellow-400 font-black">Memory Chips</p>
+            <p className="text-xl md:text-3xl font-black tabular-nums tracking-tighter text-white">
               {processors.toLocaleString()}
             </p>
           </div>
         </div>
 
-        {isPaused && (
-          <motion.div 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center"
-          >
-            <h2 className="text-6xl font-black text-white italic uppercase tracking-tighter mb-4">Paused</h2>
-            <p className="text-white/40 uppercase tracking-[0.5em] text-xs">Run Interrupted</p>
-          </motion.div>
-        )}
-
-        <div className="flex flex-col items-end gap-3">
+        {/* TOP RIGHT: HEALTH & CONTROLS */}
+        <div className="absolute top-4 right-4 md:top-8 md:right-8 flex flex-col items-end gap-3 pointer-events-auto">
           {/* Pause Button */}
           <button 
             onClick={onTogglePause}
-            className="pointer-events-auto bg-black/40 backdrop-blur-md p-3 rounded-xl border border-white/10 text-white/50 hover:text-white transition-colors hover:bg-white/10 active:scale-95"
+            className="bg-black/60 backdrop-blur-md p-2 md:p-3 rounded-xl border border-white/10 text-white/50 hover:text-white transition-all active:scale-95"
           >
-            {isPaused ? <Play className="w-6 h-6 fill-white" /> : <Pause className="w-6 h-6 fill-white" />}
+            <Pause className="w-4 h-4 md:w-6 md:h-6 fill-white" />
           </button>
 
+          {/* Stability (Lives) */}
+          <div className="bg-black/60 backdrop-blur-md px-3 md:px-5 py-1.5 md:py-2.5 rounded-xl border border-white/10 flex flex-col items-end">
+            <p className="text-[7px] md:text-[10px] uppercase tracking-widest text-white/50 mb-1 font-bold">Stability</p>
+            <div className="flex gap-1 md:gap-1.5">
+              {[...Array(maxLives)].map((_, i) => (
+                <motion.div
+                  key={i}
+                  animate={{ 
+                    scale: i < lives ? [1, 1.1, 1] : 1,
+                    opacity: i < lives ? 1 : 0.2 
+                  }}
+                  transition={{ repeat: i < lives ? Infinity : 0, duration: 2 }}
+                >
+                  <Heart 
+                    className={`w-3.5 h-3.5 md:w-5 md:h-5 ${i < lives ? 'text-pink-500 fill-pink-500 drop-shadow-[0_0_8px_rgba(236,72,153,0.8)]' : 'text-slate-700'}`} 
+                  />
+                </motion.div>
+              ))}
+            </div>
+          </div>
+
           {/* Active Modifiers */}
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-1.5 md:gap-2 items-end">
             {activeShield && (
               <motion.div 
-                initial={{ opacity: 0, scale: 0.5 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="bg-blue-600/80 backdrop-blur-md px-3 py-1 rounded-lg border border-blue-400 flex items-center gap-2"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="bg-blue-600/60 backdrop-blur-md px-2 py-0.5 md:py-1 rounded border border-blue-400/30 flex items-center gap-1.5"
               >
-                <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                <span className="text-[10px] text-white font-black uppercase tracking-tighter">Shield Active</span>
+                <div className="w-1 h-1 md:w-1.5 md:h-1.5 rounded-full bg-white animate-pulse" />
+                <span className="text-[7px] md:text-[9px] text-white font-black uppercase tracking-tighter">Shield</span>
               </motion.div>
             )}
             {activeMultiplier && (
               <motion.div 
-                initial={{ opacity: 0, scale: 0.5 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="bg-purple-600/80 backdrop-blur-md px-3 py-1 rounded-lg border border-purple-400 flex items-center gap-2"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="bg-purple-600/60 backdrop-blur-md px-2 py-0.5 md:py-1 rounded border border-purple-400/30 flex items-center gap-1.5"
               >
-                <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                <span className="text-[10px] text-white font-black uppercase tracking-tighter">Double XP</span>
+                <div className="w-1 h-1 md:w-1.5 md:h-1.5 rounded-full bg-white animate-pulse" />
+                <span className="text-[7px] md:text-[9px] text-white font-black uppercase tracking-tighter">2x CPUs</span>
               </motion.div>
             )}
             {activeSlow && (
               <motion.div 
-                initial={{ opacity: 0, scale: 0.5 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="bg-emerald-600/80 backdrop-blur-md px-3 py-1 rounded-lg border border-emerald-400 flex items-center gap-2"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="bg-emerald-600/60 backdrop-blur-md px-2 py-0.5 md:py-1 rounded border border-emerald-400/30 flex items-center gap-1.5"
               >
-                <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                <span className="text-[10px] text-white font-black uppercase tracking-tighter">Slow Motion</span>
+                <div className="w-1 h-1 md:w-1.5 md:h-1.5 rounded-full bg-white animate-pulse" />
+                <span className="text-[7px] md:text-[9px] text-white font-black uppercase tracking-tighter">Snail</span>
               </motion.div>
             )}
           </div>
-
-          <div className="bg-black/40 backdrop-blur-md px-6 py-3 rounded-xl border border-white/10 flex items-center gap-6 pointer-events-none">
-            <div className="text-right">
-              <p className="text-[10px] uppercase tracking-widest text-white/50 mb-1">Stability</p>
-              <div className="flex gap-2">
-                {[...Array(maxLives)].map((_, i) => (
-                  <motion.div
-                    key={i}
-                    animate={{ 
-                      scale: i < lives ? [1, 1.1, 1] : 1,
-                      opacity: i < lives ? 1 : 0.2 
-                    }}
-                    transition={{ repeat: i < lives ? Infinity : 0, duration: 2 }}
-                  >
-                    <Heart 
-                      className={`w-6 h-6 ${i < lives ? 'text-pink-500 fill-pink-500 drop-shadow-[0_0_8px_rgba(236,72,153,0.8)]' : 'text-slate-700'}`} 
-                    />
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="bg-orange-500 text-black px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter">
-            SPEED: {Math.floor((gameRef.current?.speed || 0) * 100)}%
-          </div>
         </div>
       </div>
+
+      {/* PAUSE OVERLAY */}
+      {isPaused && (
+        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-slate-900/90 border border-white/10 p-6 md:p-10 rounded-[2rem] shadow-[0_0_50px_rgba(0,0,0,0.5)] max-w-xs w-full text-center pointer-events-auto"
+          >
+            <div className="w-16 h-16 bg-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-6 border border-cyan-400/30">
+              <Pause className="text-cyan-400 w-8 h-8 fill-cyan-400" />
+            </div>
+            
+            <h2 className="text-3xl font-black text-white italic uppercase tracking-tighter mb-8">
+              System <span className="text-cyan-400">Paused</span>
+            </h2>
+
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={onTogglePause}
+                className="group relative w-full py-4 bg-cyan-400 text-black font-black rounded-xl overflow-hidden hover:scale-105 active:scale-95 transition-all shadow-lg shadow-cyan-400/20 flex items-center justify-center gap-3"
+              >
+                <Play className="w-5 h-5 fill-black" />
+                <span className="tracking-widest uppercase text-sm">Resume Run</span>
+              </button>
+
+              <button 
+                onClick={onQuit}
+                className="w-full py-4 border border-white/10 text-white/50 hover:bg-white/5 hover:text-white rounded-xl transition-all font-black uppercase text-[10px] tracking-widest"
+              >
+                Exit to Menu
+              </button>
+            </div>
+
+            <p className="mt-8 text-[8px] text-white/20 font-mono leading-tight tracking-[0.2em] uppercase">
+              Memory chips saved successfully.<br/>
+              Session data integrity verified.
+            </p>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };

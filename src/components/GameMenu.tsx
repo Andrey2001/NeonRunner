@@ -27,38 +27,38 @@ export const GameMenu: React.FC<MenuProps> = ({
 
   if (view === 'shop') {
     return (
-      <div className="absolute inset-0 flex items-center justify-center bg-slate-950/90 backdrop-blur-md z-50 overflow-hidden">
+      <div className="absolute inset-0 flex items-center justify-center bg-slate-950/95 backdrop-blur-md z-50 overflow-hidden">
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="relative p-8 border border-white/10 rounded-[2.5rem] bg-black/60 backdrop-blur-xl shadow-[0_0_80px_rgba(34,211,238,0.1)] max-w-sm w-full mx-4"
+          className="relative p-6 md:p-8 border border-white/10 rounded-[2rem] md:rounded-[2.5rem] bg-black/60 backdrop-blur-xl shadow-[0_0_80px_rgba(34,211,238,0.1)] max-w-[90%] md:max-w-sm w-full mx-4"
         >
           <button 
             onClick={() => setView('main')}
-            className="absolute top-6 left-6 p-2 text-white/50 hover:text-white transition-colors"
+            className="absolute top-4 left-4 md:top-6 md:left-6 p-2 text-white/50 hover:text-white transition-colors"
           >
             <ArrowLeft size={20} />
           </button>
           
-          <h2 className="text-3xl font-black text-white mt-4 mb-2 tracking-tighter uppercase italic italic">
+          <h2 className="text-2xl md:text-3xl font-black text-white mt-6 md:mt-4 mb-1 md:mb-2 tracking-tighter uppercase italic">
             Hardware <br/>
             <span className="text-yellow-400">Shop</span>
           </h2>
           
-          <div className="flex items-center gap-2 text-yellow-500 font-mono text-xs mb-8">
+          <div className="flex items-center gap-2 text-yellow-500 font-mono text-[10px] md:text-xs mb-6 md:mb-8">
             <span className="opacity-50">Balance:</span>
             <span className="font-bold">{totalProcessors.toLocaleString()} CPUs</span>
           </div>
 
           <div className="space-y-4">
-            <div className="p-4 bg-white/5 rounded-2xl border border-white/5 flex flex-col items-center">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 bg-pink-500/20 rounded-full flex items-center justify-center border border-pink-500/30">
-                  <Heart className="text-pink-500 animate-pulse" size={20} />
+            <div className="p-3 md:p-4 bg-white/5 rounded-2xl border border-white/5 flex flex-col items-center">
+              <div className="flex items-center gap-3 mb-3 w-full">
+                <div className="w-10 h-10 bg-pink-500/20 rounded-full flex items-center justify-center border border-pink-500/30 flex-shrink-0">
+                  <Heart className="text-pink-500 animate-pulse" size={18} />
                 </div>
                 <div className="text-left">
                   <p className="text-white font-bold text-sm">Backup Core</p>
-                  <p className="text-white/40 text-[10px]">Start next game with +1 Life</p>
+                  <p className="text-white/40 text-[9px] md:text-[10px]">Start game with +1 Life</p>
                 </div>
               </div>
               

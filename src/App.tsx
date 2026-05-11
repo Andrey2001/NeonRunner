@@ -68,6 +68,17 @@ export default function App() {
     });
   }, [score, sessionProcessors]);
 
+  const handleQuit = useCallback(() => {
+    setTotalProcessors(prev => {
+      const newTotal = prev + sessionProcessors;
+      localStorage.setItem('neon_runner_total_processors', newTotal.toString());
+      return newTotal;
+    });
+    setIsStarted(false);
+    setIsGameOver(false);
+    setIsPaused(false);
+  }, [sessionProcessors]);
+
   const handleLifeLost = useCallback((newLives: number) => {
     setLives(newLives);
   }, []);
@@ -108,6 +119,7 @@ export default function App() {
           onScoreUpdate={updateScore} 
           onGameOver={handleGameOver} 
           onLifeLost={handleLifeLost}
+          onQuit={handleQuit}
           lives={lives}
           maxLives={maxLives}
           isPaused={isPaused} 
