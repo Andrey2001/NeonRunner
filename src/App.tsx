@@ -17,8 +17,10 @@ export default function App() {
     return saved ? parseInt(saved, 10) : 0;
   });
   const [lives, setLives] = useState(3);
+  const [maxLives, setMaxLives] = useState(3);
   const [isPaused, setIsPaused] = useState(false);
   const [gameId, setGameId] = useState(0);
+  const [extraLifePurchased, setExtraLifePurchased] = useState(false);
   const [highScores, setHighScores] = useState<number[]>(() => {
     const saved = localStorage.getItem('neon_runner_scores');
     return saved ? JSON.parse(saved) : [];
@@ -29,10 +31,24 @@ export default function App() {
     setIsGameOver(false);
     setScore(0);
     setSessionProcessors(0);
-    setLives(3);
+    const startLives = extraLifePurchased ? 4 : 3;
+    setLives(startLives);
+    setMaxLives(startLives);
+    setExtraLifePurchased(false); // Reset for next game
     setIsPaused(false);
     setGameId(prev => prev + 1);
-  }, []);
+  }, [extraLifePurchased]);
+
+  const buyExtraLife = useCallback(() => {
+    if (totalProcessors >= 100000 && !extraLifePurchased) {
+      setTotalProcessors(prev => {
+        const next = prev - 100000;
+        localStorage.setItem('neon_runner_total_processors', next.toString());
+        return next;
+      });
+      setExtraLifePurchased(true);
+    }
+  }, [totalProcessors, extraLifePurchased]);
 
   const handleGameOver = useCallback(() => {
     setIsGameOver(true);
@@ -68,6 +84,8 @@ export default function App() {
           type="start" 
           onAction={startGame} 
           totalProcessors={totalProcessors}
+          extraLifePurchased={extraLifePurchased}
+          onBuyLife={buyExtraLife}
         />
       )}
       
@@ -79,6 +97,8 @@ export default function App() {
           onAction={startGame} 
           highScores={highScores}
           totalProcessors={totalProcessors + sessionProcessors}
+          extraLifePurchased={extraLifePurchased}
+          onBuyLife={buyExtraLife}
         />
       )}
 
@@ -89,6 +109,7 @@ export default function App() {
           onGameOver={handleGameOver} 
           onLifeLost={handleLifeLost}
           lives={lives}
+          maxLives={maxLives}
           isPaused={isPaused} 
           onTogglePause={() => setIsPaused(!isPaused)}
         />

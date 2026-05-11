@@ -12,10 +12,11 @@ interface GameProps {
   onLifeLost: (lives: number) => void;
   onTogglePause: () => void;
   lives: number;
+  maxLives: number;
   isPaused: boolean;
 }
 
-export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onLifeLost, onTogglePause, lives, isPaused }) => {
+export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onLifeLost, onTogglePause, lives, maxLives, isPaused }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const isPausedRef = useRef(isPaused);
   
@@ -70,7 +71,9 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
     callbacksRef.current = { onScoreUpdate, onGameOver, onLifeLost };
   }, [onScoreUpdate, onGameOver, onLifeLost]);
 
-  // Keyboard controls
+  // Keyboard & Touch controls
+  const touchStartRef = useRef<{ x: number, y: number } | null>(null);
+
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (!gameRef.current || isPaused) return;
     const gr = gameRef.current;
@@ -85,10 +88,68 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
     }
   }, [isPaused]);
 
+  const handleTouchStart = useCallback((e: TouchEvent) => {
+    if (isPaused) return;
+    touchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY
+    };
+  }, [isPaused]);
+
+  const handleTouchEnd = useCallback((e: TouchEvent) => {
+    if (!gameRef.current || isPaused || !touchStartRef.current) return;
+    const gr = gameRef.current;
+    
+    const touchEndX = e.changedTouches[0].clientX;
+    const touchEndY = e.changedTouches[0].clientY;
+    
+    const dx = touchEndX - touchStartRef.current.x;
+    const dy = touchEndY - touchStartRef.current.y;
+    
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+    
+    const threshold = 30; // Minimum swipe distance
+
+    if (Math.max(absDx, absDy) > threshold) {
+      if (absDx > absDy) {
+        // Horizontal swipe
+        if (dx > 0) {
+          if (gr.currentLane < 2) gr.currentLane = (gr.currentLane + 1) as Lane;
+        } else {
+          if (gr.currentLane > -2) gr.currentLane = (gr.currentLane - 1) as Lane;
+        }
+      } else {
+        // Vertical swipe
+        if (dy < 0 && !gr.isJumping) {
+          // Swipe up
+          gr.isJumping = true;
+          gr.jumpVelocity = GAME_CONFIG.JUMP_FORCE;
+        }
+      }
+    }
+    
+    touchStartRef.current = null;
+  }, [isPaused]);
+
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
+    window.addEventListener('touchstart', handleTouchStart, { passive: false });
+    window.addEventListener('touchend', handleTouchEnd, { passive: false });
+    
+    // Prevent default touch behavior (scrolling)
+    const preventDefault = (e: TouchEvent) => {
+      if (!isPaused && e.cancelable) e.preventDefault();
+    };
+    window.addEventListener('touchmove', preventDefault, { passive: false });
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchend', handleTouchEnd);
+      window.removeEventListener('touchmove', preventDefault);
+    };
+  }, [handleKeyDown, handleTouchStart, handleTouchEnd, isPaused]);
 
   const livesRef = useRef(lives);
   useEffect(() => {
@@ -421,6 +482,134 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
       return group;
     };
 
+    const createHeartMeshPowerup = (color: number) => {
+      const shape = new THREE.Shape();
+      shape.moveTo(0, 0.7);
+      shape.bezierCurveTo(0, 0.7, -0.7, 0.7, -0.7, 0);
+      shape.bezierCurveTo(-0.7, -0.7, 0, -1, 0, -1.4);
+      shape.bezierCurveTo(0, -1, 0.7, -0.7, 0.7, 0);
+      shape.bezierCurveTo(0.7, 0.7, 0, 0.7, 0, 0.7);
+      
+      const geometry = new THREE.ExtrudeGeometry(shape, {
+        depth: 0.4,
+        bevelEnabled: true,
+        bevelSegments: 2,
+        steps: 2,
+        bevelSize: 0.1,
+        bevelThickness: 0.1
+      });
+      const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2 }));
+      mesh.rotation.x = Math.PI; // Flip to face correctly
+      mesh.scale.set(0.8, 0.8, 0.8);
+      return mesh;
+    };
+
+    const createShieldMeshPowerupMesh = (color: number) => {
+      const shape = new THREE.Shape();
+      shape.moveTo(-0.7, 0.7);
+      shape.lineTo(0.7, 0.7);
+      shape.lineTo(0.7, 0);
+      shape.quadraticCurveTo(0.7, -0.8, 0, -1.4);
+      shape.quadraticCurveTo(-0.7, -0.8, -0.7, 0);
+      shape.lineTo(-0.7, 0.7);
+
+      const geometry = new THREE.ExtrudeGeometry(shape, {
+        depth: 0.3,
+        bevelEnabled: true,
+        bevelSize: 0.1,
+        bevelThickness: 0.1
+      });
+      const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2 }));
+      mesh.rotation.y = Math.PI; // Face player
+      return mesh;
+    };
+
+    const createSnailMeshPowerup = (color: number) => {
+      const group = new THREE.Group();
+      
+      // Shell (Torus spiral-ish)
+      const shell = new THREE.Mesh(
+        new THREE.TorusGeometry(0.6, 0.35, 12, 24),
+        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.5 })
+      );
+      shell.position.y = 0.4;
+      group.add(shell);
+      
+      // Body
+      const body = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.25, 1.2, 4, 8),
+        new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.3 })
+      );
+      body.rotation.z = Math.PI / 2;
+      body.position.y = -0.3;
+      group.add(body);
+      
+      // Antennae
+      const eyeGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.5);
+      const antMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8 });
+      const lAnt = new THREE.Mesh(eyeGeo, antMat);
+      lAnt.position.set(0.7, 0.2, 0.15);
+      lAnt.rotation.z = -0.4;
+      group.add(lAnt);
+      const rAnt = new THREE.Mesh(eyeGeo, antMat);
+      rAnt.position.set(0.7, 0.2, -0.15);
+      rAnt.rotation.z = -0.4;
+      group.add(rAnt);
+      
+      group.rotation.y = -Math.PI / 2; // Face player
+
+      return group;
+    };
+
+    const spawnPattern = (type: 'gate' | 'jump') => {
+      if (!gameRef.current) return;
+      const gr = gameRef.current;
+      const currentZ = gr.distance;
+      
+      // Pattern needs more space than single entities
+      const minDistance = 40; 
+      if (gr.lastSpawnZ.some(z => currentZ - z < minDistance)) return;
+
+      if (type === 'gate') {
+        const freeLaneIndex = Math.floor(Math.random() * 5);
+        for (let i = 0; i < 5; i++) {
+          if (i === freeLaneIndex) continue;
+          
+          const lane = (i - 2) as Lane;
+          const geometry = new THREE.BoxGeometry(2.5, 14, 2.5);
+          const color = GAME_CONFIG.COLORS.OBSTACLE;
+          const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ 
+            color, 
+            emissive: color, 
+            emissiveIntensity: 1,
+            roughness: 0.2
+          }));
+          mesh.userData = { type: 'obstacle', isTall: true };
+          mesh.position.set(lane * GAME_CONFIG.LANE_WIDTH, 7, GAME_CONFIG.SPAWN_Z);
+          gr.scene.add(mesh);
+          gr.obstacles.push(mesh as THREE.Mesh);
+          gr.lastSpawnZ[i] = currentZ;
+        }
+      } else if (type === 'jump') {
+        for (let i = 0; i < 5; i++) {
+          const lane = (i - 2) as Lane;
+          const geometry = new THREE.BoxGeometry(2.5, 1.8, 2.8);
+          const color = GAME_CONFIG.COLORS.OBSTACLE;
+          const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ 
+            color, 
+            emissive: color, 
+            emissiveIntensity: 1,
+            roughness: 0.2
+          }));
+          mesh.userData = { type: 'obstacle', isLow: true };
+          mesh.position.set(lane * GAME_CONFIG.LANE_WIDTH, 0.9, GAME_CONFIG.SPAWN_Z);
+          gr.scene.add(mesh);
+          gr.obstacles.push(mesh as THREE.Mesh);
+          gr.lastSpawnZ[i] = currentZ;
+        }
+      }
+    };
+
     const spawnEntity = (type: 'obstacle' | 'point' | 'powerup') => {
       if (!gameRef.current) return;
       const laneIndex = Math.floor(Math.random() * 5);
@@ -491,28 +680,27 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
           pTypeStr = 'slow';
         }
 
-        let geometry: THREE.BufferGeometry;
+        let powerupMesh: THREE.Object3D;
         let color: number;
         
         if (pTypeStr === 'shield') {
-          geometry = new THREE.TorusGeometry(1, 0.3, 16, 32);
           color = GAME_CONFIG.COLORS.SHIELD;
+          powerupMesh = createShieldMeshPowerupMesh(color);
           userData.powerupType = 'shield';
         } else if (pTypeStr === 'multiplier') {
-          geometry = new THREE.IcosahedronGeometry(1.2, 0);
           color = GAME_CONFIG.COLORS.MULTIPLIER;
+          powerupMesh = new THREE.Mesh(new THREE.IcosahedronGeometry(1.2, 0), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2 }));
           userData.powerupType = 'multiplier';
         } else if (pTypeStr === 'slow') {
-          geometry = new THREE.CylinderGeometry(0.8, 1.2, 1.5, 6);
           color = GAME_CONFIG.COLORS.SLOWDOWN;
+          powerupMesh = createSnailMeshPowerup(color);
           userData.powerupType = 'slow';
         } else {
-          // Heart geometry
-          geometry = new THREE.IcosahedronGeometry(1.2, 1);
           color = GAME_CONFIG.COLORS.HEART;
+          powerupMesh = createHeartMeshPowerup(color);
           userData.powerupType = 'heart';
         }
-        mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2 }));
+        mesh = powerupMesh;
         mesh.position.y = 2.0;
       }
 
@@ -627,9 +815,14 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
         }
 
         // Spawn logic
-        if (Math.random() < GAME_CONFIG.OBSTACLE_SPAWN_RATE) spawnEntity('obstacle');
-        if (Math.random() < GAME_CONFIG.POINT_SPAWN_RATE) spawnEntity('point');
-        if (Math.random() < GAME_CONFIG.POWERUP_SPAWN_RATE) spawnEntity('powerup');
+        const patternChance = Math.random();
+        if (patternChance < 0.006) {
+          spawnPattern(Math.random() > 0.5 ? 'gate' : 'jump');
+        } else {
+          if (Math.random() < GAME_CONFIG.OBSTACLE_SPAWN_RATE) spawnEntity('obstacle');
+          if (Math.random() < GAME_CONFIG.POINT_SPAWN_RATE) spawnEntity('point');
+          if (Math.random() < GAME_CONFIG.POWERUP_SPAWN_RATE) spawnEntity('powerup');
+        }
 
         // Process Obstacles
         for (let i = gr.obstacles.length - 1; i >= 0; i--) {
@@ -679,6 +872,8 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
         for (let i = gr.points.length - 1; i >= 0; i--) {
           const p = gr.points[i];
           p.position.z += effectiveSpeed;
+          // Hovering AND rotating
+          p.position.y = 2.2 + Math.sin(time * 0.004 + i) * 0.2;
           p.rotation.y += 0.05;
           
           if (gr.player.position.distanceTo(p.position) < 3.5) {
@@ -703,8 +898,9 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
         for (let i = gr.powerups.length - 1; i >= 0; i--) {
           const p = gr.powerups[i];
           p.position.z += effectiveSpeed;
-          p.rotation.y += 0.08;
-          p.rotation.z += 0.05;
+          // Hovering + rotating
+          p.position.y = 2.0 + Math.sin(time * 0.005 + i) * 0.3;
+          p.rotation.y += 0.04;
 
           if (gr.player.position.distanceTo(p.position) < 3.0) {
             const pType = p.userData.powerupType;
@@ -721,7 +917,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
               setActiveSlow(true);
               AudioManager.playPowerup();
             } else if (pType === 'heart') {
-              if (livesRef.current < 3) {
+              if (livesRef.current < maxLives) {
                 callbacksRef.current.onLifeLost(livesRef.current + 1);
                 AudioManager.playCollect();
               }
@@ -843,7 +1039,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
             <div className="text-right">
               <p className="text-[10px] uppercase tracking-widest text-white/50 mb-1">Stability</p>
               <div className="flex gap-2">
-                {[...Array(3)].map((_, i) => (
+                {[...Array(maxLives)].map((_, i) => (
                   <motion.div
                     key={i}
                     animate={{ 
