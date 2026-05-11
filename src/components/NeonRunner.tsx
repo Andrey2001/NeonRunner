@@ -12,12 +12,15 @@ interface GameProps {
   onLifeLost: (lives: number) => void;
   onQuit: () => void;
   onTogglePause: () => void;
+  onAchievementUnlock: (id: string, title: string) => void;
   lives: number;
   maxLives: number;
+  initialBuffs?: string[];
+  activeSkin?: string;
   isPaused: boolean;
 }
 
-export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onLifeLost, onQuit, onTogglePause, lives, maxLives, isPaused }) => {
+export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onLifeLost, onQuit, onTogglePause, lives, maxLives, initialBuffs = [], activeSkin = 'cyan', isPaused, onAchievementUnlock }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const isPausedRef = useRef(isPaused);
   
@@ -43,6 +46,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
     speed: number;
     distance: number;
     processors: number;
+    obstaclesAvoided: number;
     currentLane: Lane;
     targetX: number;
     invulnerable: number;
@@ -53,7 +57,10 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
     modifierShield: number;
     modifierMultiplier: number;
     modifierSlow: number;
+    modifierDestruction: number;
+    modifierDistMult: number;
     isGameOver: boolean;
+    pedestrians: THREE.Object3D[];
   } | null>(null);
 
   useEffect(() => {
@@ -65,12 +72,26 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
   const [activeShield, setActiveShield] = useState(false);
   const [activeMultiplier, setActiveMultiplier] = useState(false);
   const [activeSlow, setActiveSlow] = useState(false);
+  const [activeDestruction, setActiveDestruction] = useState(false);
+  const [activeDistMult, setActiveDistMult] = useState(false);
+  const [lastBuildingZ, setLastBuildingZ] = useState(0);
+
+  useEffect(() => {
+    // Apply purchased buffs immediately if the component just mounted
+    if (initialBuffs.includes('shield')) setActiveShield(true);
+    if (initialBuffs.includes('multiplier')) setActiveMultiplier(true);
+    if (initialBuffs.includes('slow')) setActiveSlow(true);
+    if (initialBuffs.includes('dist')) setActiveDistMult(true);
+    if (initialBuffs.includes('bomb')) setActiveDestruction(true);
+  }, [initialBuffs]);
 
   // Use refs for callbacks to avoid re-triggering the setup effect
-  const callbacksRef = useRef({ onScoreUpdate, onGameOver, onLifeLost, onQuit });
+  const callbacksRef = useRef({ onScoreUpdate, onGameOver, onLifeLost, onQuit, onAchievementUnlock });
   useEffect(() => {
-    callbacksRef.current = { onScoreUpdate, onGameOver, onLifeLost, onQuit };
-  }, [onScoreUpdate, onGameOver, onLifeLost, onQuit]);
+    callbacksRef.current = { onScoreUpdate, onGameOver, onLifeLost, onQuit, onAchievementUnlock };
+  }, [onScoreUpdate, onGameOver, onLifeLost, onQuit, onAchievementUnlock]);
+  
+  const achievementTriggeredRef = useRef<Record<string, boolean>>({});
 
   // Keyboard & Touch controls
   const touchStartRef = useRef<{ x: number, y: number } | null>(null);
@@ -196,9 +217,21 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
 
     // Detailed Cyberpunk Robot (Plating & Glowing Joints)
     const playerGroup = new THREE.Group();
+    
+    // Skin colors
+    const skinColors: Record<string, { main: number, glow: number }> = {
+      cyan: { main: 0x0ea5e9, glow: 0x22d3ee },
+      pink: { main: 0xec4899, glow: 0xf472b6 },
+      emerald: { main: 0x10b981, glow: 0x34d399 },
+      amber: { main: 0xf59e0b, glow: 0xfbbf24 },
+      purple: { main: 0x8b5cf6, glow: 0xa78bfa }
+    };
+    
+    const colors = skinColors[activeSkin] || skinColors.cyan;
+
     const bodyMat = new THREE.MeshStandardMaterial({ 
-      color: 0x0ea5e9, 
-      emissive: 0x0ea5e9,
+      color: colors.main, 
+      emissive: colors.main,
       emissiveIntensity: 0.8, 
       roughness: 0.1,
       metalness: 0.9
@@ -209,8 +242,8 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
       metalness: 0.5
     });
     const glowMat = new THREE.MeshStandardMaterial({ 
-      color: 0x22d3ee, 
-      emissive: 0x22d3ee, 
+      color: colors.glow, 
+      emissive: colors.glow, 
       emissiveIntensity: 5 
     });
 
@@ -344,32 +377,128 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
     // Background Buildings (Diverse & Solid)
     const buildings: THREE.Mesh[] = [];
     const createBuilding = (z: number, left: boolean) => {
-      const h = 40 + Math.random() * 100;
-      const w = 20 + Math.random() * 30;
-      const type = Math.floor(Math.random() * 3); // 0: Box, 1: Cylinder, 2: Pyramid-ish
+      const h = 15 + Math.random() * 35;
+      const w = 12 + Math.random() * 15;
+      const d = 12 + Math.random() * 15;
       
-      let geometry: THREE.BufferGeometry;
-      if (type === 0) {
-        geometry = new THREE.BoxGeometry(w, h, w);
-      } else if (type === 1) {
-        geometry = new THREE.CylinderGeometry(w/2, w/2, h, 8);
-      } else {
-        geometry = new THREE.ConeGeometry(w, h, 4);
+      const colors = [0x0f172a, 0x1e1b4b, 0x0a0a0a];
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      
+      const geometry = new THREE.BoxGeometry(w, h, d);
+      const material = new THREE.MeshStandardMaterial({ 
+        color, 
+        roughness: 0.3, 
+        metalness: 0.7 
+      });
+      const building = new THREE.Mesh(geometry, material);
+      const x = left ? -45 - w/2 : 45 + w/2;
+      building.position.set(x, h/2, z);
+      
+      // Add windows (minimalist)
+      const winCount = 3 + Math.floor(Math.random() * 4);
+      for (let i = 0; i < winCount; i++) {
+        const winH = 0.5 + Math.random() * 1.5;
+        const winW = 0.5 + Math.random() * 2;
+        const winColor = [0x00ffff, 0xff00ff, 0xffff00][Math.floor(Math.random() * 3)];
+        
+        const winGeo = new THREE.PlaneGeometry(winW, winH);
+        const winMat = new THREE.MeshStandardMaterial({ 
+          color: winColor, 
+          emissive: winColor, 
+          emissiveIntensity: 1.5,
+        });
+        const window = new THREE.Mesh(winGeo, winMat);
+        
+        const sideOffset = left ? w/2 + 0.05 : -w/2 - 0.05;
+        window.position.set(sideOffset, (Math.random() - 0.5) * (h - 15), (Math.random() - 0.5) * (d - 10));
+        window.rotation.y = Math.PI / 2;
+        building.add(window);
       }
 
-      const b = new THREE.Mesh(
-        geometry,
-        new THREE.MeshStandardMaterial({ 
-          color: left ? 0x0f172a : 0x1e1b4b, 
-          roughness: 0.4,
-          metalness: 0.8,
-          emissive: type === 0 ? 0x000000 : GAME_CONFIG.COLORS.GRID,
-          emissiveIntensity: 0.1
-        })
+      // Large neon sign (very rare)
+      if (Math.random() > 0.85) {
+        const signH = 3 + Math.random() * 3;
+        const signW = 5 + Math.random() * 5;
+        const signColor = [0x00ffff, 0xff00ff][Math.floor(Math.random() * 2)];
+        
+        const signGeo = new THREE.PlaneGeometry(signW, signH);
+        const signMat = new THREE.MeshStandardMaterial({
+          color: signColor,
+          emissive: signColor,
+          emissiveIntensity: 2,
+          transparent: true,
+          opacity: 0.5,
+          side: THREE.DoubleSide
+        });
+        const sign = new THREE.Mesh(signGeo, signMat);
+        
+        const signX = left ? w/2 + 1.5 : -w/2 - 1.5;
+        sign.position.set(signX, h/2 + (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
+        sign.rotation.y = Math.PI / 2;
+        building.add(sign);
+      }
+      
+      scene.add(building);
+      return building;
+    };
+
+    const spawnPedestrian = (z: number) => {
+      const side = Math.random() > 0.5 ? 'left' : 'right';
+      const x = side === 'left' ? -18 : 18;
+      
+      const ped = new THREE.Group();
+      const scale = 3; 
+      
+      // Torso
+      const torso = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5 * scale, 1.0 * scale, 0.3 * scale),
+        new THREE.MeshStandardMaterial({ color: 0x334155 })
       );
-      b.position.set(left ? -60 - w/2 : 60 + w/2, h/2, z);
-      scene.add(b);
-      return b;
+      torso.position.y = 0.5 * scale;
+      ped.add(torso);
+      
+      // Head
+      const head = new THREE.Mesh(
+        new THREE.BoxGeometry(0.4 * scale, 0.4 * scale, 0.4 * scale),
+        new THREE.MeshStandardMaterial({ color: 0x475569 })
+      );
+      head.position.y = 1.2 * scale;
+      ped.add(head);
+
+      // Arms
+      const armGeo = new THREE.BoxGeometry(0.15 * scale, 0.8 * scale, 0.15 * scale);
+      const lArm = new THREE.Mesh(armGeo, new THREE.MeshStandardMaterial({ color: 0x334155 }));
+      lArm.position.set(-0.35 * scale, 0.5 * scale, 0);
+      ped.add(lArm);
+      
+      const rArm = new THREE.Mesh(armGeo, new THREE.MeshStandardMaterial({ color: 0x334155 }));
+      rArm.position.set(0.35 * scale, 0.5 * scale, 0);
+      ped.add(rArm);
+
+      // Legs
+      const legGeo = new THREE.BoxGeometry(0.2 * scale, 1.0 * scale, 0.2 * scale);
+      const lLeg = new THREE.Mesh(legGeo, new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+      lLeg.position.set(-0.15 * scale, -1.0 * scale, 0);
+      ped.add(lLeg);
+      
+      const rLeg = new THREE.Mesh(legGeo, new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+      rLeg.position.set(0.15 * scale, -1.0 * scale, 0);
+      ped.add(rLeg);
+      
+      // Eye visor
+      const eye = new THREE.Mesh(
+        new THREE.BoxGeometry(0.35 * scale, 0.05 * scale, 0.05 * scale),
+        new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 2 })
+      );
+      eye.position.set(0, 1.2 * scale, side === 'left' ? 0.2 * scale : -0.2 * scale);
+      ped.add(eye);
+      
+      // Position base at ground
+      ped.position.set(x + (Math.random() - 0.5) * 3, 3, z);
+      ped.userData = { walkSpeed: (Math.random() * 0.05 + 0.02) * (Math.random() > 0.5 ? 1 : -1) };
+      
+      scene.add(ped);
+      gameRef.current?.pedestrians.push(ped);
     };
     for(let z=0; z>-600; z-=50) {
       buildings.push(createBuilding(z, true));
@@ -384,6 +513,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
       speed: GAME_CONFIG.INITIAL_SPEED,
       distance: 0,
       processors: 0,
+      obstaclesAvoided: 0,
       currentLane: 0 as Lane,
       targetX: 0,
       invulnerable: 0,
@@ -394,8 +524,19 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
       modifierShield: 0,
       modifierMultiplier: 0,
       modifierSlow: 0,
-      isGameOver: false, // NEW: Prevent updates after loss
+      modifierDestruction: 0,
+      modifierDistMult: 0,
+      isGameOver: false,
+      pedestrians: [],
     };
+
+    // Apply pre-game buffs to internal state
+    if (initialBuffs.includes('shield')) gameRef.current.modifierShield = GAME_CONFIG.MODIFIER_DURATION;
+    if (initialBuffs.includes('multiplier')) gameRef.current.modifierMultiplier = GAME_CONFIG.MODIFIER_DURATION;
+    if (initialBuffs.includes('slow')) gameRef.current.modifierSlow = GAME_CONFIG.MODIFIER_DURATION;
+    if (initialBuffs.includes('dist')) gameRef.current.modifierDistMult = GAME_CONFIG.MODIFIER_DURATION;
+    if (initialBuffs.includes('bomb')) gameRef.current.modifierDestruction = GAME_CONFIG.MODIFIER_DURATION;
+
     const gr = gameRef.current; // Direct ref for local use
 
     const createProcessorMesh = (size: number, color: number, value: number) => {
@@ -562,6 +703,105 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
       return group;
     };
 
+    const createBombMeshPowerup = (color: number) => {
+      const group = new THREE.Group();
+      // Spherical core - now using the powerup color (orange)
+      const core = new THREE.Mesh(
+        new THREE.SphereGeometry(0.8, 16, 16),
+        new THREE.MeshStandardMaterial({ 
+          color, 
+          emissive: color, 
+          emissiveIntensity: 1.5,
+          metalness: 0.8 
+        })
+      );
+      group.add(core);
+      
+      // Burning wick
+      const wick = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.05, 0.05, 0.4),
+        new THREE.MeshStandardMaterial({ color: 0xedbb7d })
+      );
+      wick.position.y = 0.8;
+      group.add(wick);
+
+      const fire = new THREE.Mesh(
+        new THREE.SphereGeometry(0.2, 8, 8),
+        new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xff4400, emissiveIntensity: 5 })
+      );
+      fire.position.y = 1.0;
+      group.add(fire);
+
+      return group;
+    };
+
+    const createDistMeshPowerup = (color: number) => {
+      const group = new THREE.Group();
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(0.7, 0.15, 16, 100),
+        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2 })
+      );
+      group.add(ring);
+      const center = new THREE.Mesh(
+        new THREE.BoxGeometry(0.6, 0.6, 0.2),
+        new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1 })
+      );
+      group.add(center);
+      return group;
+    };
+
+    const triggerDestructionEffect = (pos: THREE.Vector3, color: number) => {
+      const particleCount = 12;
+      const particles: THREE.Mesh[] = [];
+      const particleGroup = new THREE.Group();
+      particleGroup.position.copy(pos);
+      scene.add(particleGroup);
+
+      const partGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+      const partMat = new THREE.MeshStandardMaterial({ 
+        color, 
+        emissive: color, 
+        emissiveIntensity: 2,
+        transparent: true 
+      });
+
+      for (let i = 0; i < particleCount; i++) {
+        const particle = new THREE.Mesh(partGeo, partMat.clone());
+        particle.userData = {
+          velocity: new THREE.Vector3(
+            (Math.random() - 0.5) * 0.5,
+            (Math.random()) * 0.5,
+            (Math.random() - 0.5) * 0.5
+          ),
+          rotation: new THREE.Vector3(
+            Math.random() * 0.2,
+            Math.random() * 0.2,
+            Math.random() * 0.2
+          )
+        };
+        particleGroup.add(particle);
+        particles.push(particle);
+      }
+
+      let frames = 0;
+      const animateParticles = () => {
+        if (frames > 60) {
+          scene.remove(particleGroup);
+          return;
+        }
+        frames++;
+        particles.forEach(p => {
+          p.position.add(p.userData.velocity);
+          p.rotation.x += p.userData.rotation.x;
+          p.rotation.y += p.userData.rotation.y;
+          p.userData.velocity.y -= 0.01; // Gravity
+          (p.material as THREE.MeshStandardMaterial).opacity = 1 - (frames / 60);
+        });
+        requestAnimationFrame(animateParticles);
+      };
+      animateParticles();
+    };
+
     const spawnPattern = (type: 'gate' | 'jump') => {
       if (!gameRef.current) return;
       const gr = gameRef.current;
@@ -625,25 +865,29 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
 
     const spawnEntity = (type: 'obstacle' | 'point' | 'powerup') => {
       if (!gameRef.current) return;
+      const gr = gameRef.current;
       const laneIndex = Math.floor(Math.random() * 5);
       const lane = (laneIndex - 2) as Lane;
       
       // Check for overlap in this lane locally (simple Z buffer check)
-      const currentZ = gameRef.current.distance;
-      if (currentZ - gameRef.current.lastSpawnZ[laneIndex] < 15) return;
-      gameRef.current.lastSpawnZ[laneIndex] = currentZ;
+      const currentZ = gr.distance;
+      if (currentZ - gr.lastSpawnZ[laneIndex] < 15) return;
+      gr.lastSpawnZ[laneIndex] = currentZ;
 
       let mesh: THREE.Object3D;
       let userData: any = { type };
 
       if (type === 'obstacle') {
         const rand = Math.random();
-        const isTall = rand > 0.8;
-        const isLow = !isTall && rand > 0.3;
-        const isMed = !isTall && !isLow;
-        
+        const isTall = rand > 0.85;
+        const isLow = !isTall && rand > 0.4;
+        const isMed = !isTall && !isLow && rand > 0.2;
+        const isWide = !isTall && !isLow && !isMed && rand > 0.1; // New: blocks 2 lanes
+        const isMoving = !isTall && !isLow && !isMed && !isWide; // New: moves sideways
+
         let geometry: THREE.BufferGeometry;
         let h = 4;
+        
         if (isTall) {
           geometry = new THREE.BoxGeometry(2.5, 12, 2.5);
           userData.isTall = true;
@@ -652,29 +896,53 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
           geometry = new THREE.BoxGeometry(2.5, 1.5, 2.5);
           userData.isLow = true;
           h = 1.5;
+        } else if (isWide) {
+          // Block exactly 3 lanes (center lane + 1 left + 1 right)
+          geometry = new THREE.BoxGeometry(GAME_CONFIG.LANE_WIDTH * 2.8, 6, 3.5);
+          userData.isWide = true;
+          h = 6;
+        } else if (isMoving) {
+          geometry = new THREE.BoxGeometry(2.5, 4, 2.5);
+          userData.isMoving = true;
+          userData.moveDir = laneIndex > 2 ? -1 : 1;
+          userData.startX = lane * GAME_CONFIG.LANE_WIDTH;
+          h = 4;
         } else {
           geometry = new THREE.BoxGeometry(2.5, 4, 3.5);
           userData.isMed = true;
           h = 4;
         }
         
-        const color = GAME_CONFIG.COLORS.OBSTACLE;
+        const color = isMoving ? 0xff3333 : (isWide ? 0xffcc33 : GAME_CONFIG.COLORS.OBSTACLE);
         mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ 
           color, 
           emissive: color, 
-          emissiveIntensity: 1,
+          emissiveIntensity: isMoving ? 2 : 1,
           roughness: 0.2
         }));
         mesh.position.y = h / 2;
 
+        // Visual for moving obstacle
+        if (isMoving) {
+          const scanner = new THREE.Mesh(
+            new THREE.BoxGeometry(2.6, 0.2, 2.6),
+            new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 5 })
+          );
+          scanner.position.y = 0.5;
+          mesh.add(scanner);
+        }
+
         // Spawn CPU above jumpable obstacles
-        if (isLow || isMed) {
-          if (Math.random() > 0.4) {
+        if (isLow || isMed || isMoving) {
+          const spawnChance = isMed ? 0.8 : 0.4;
+          if (Math.random() < spawnChance) {
             const val = 100;
             const size = isMed ? 1.8 : 1.2;
             const cpu = createProcessorMesh(size, 0xfacc15, val);
             cpu.rotation.x = -Math.PI / 2.5;
-            cpu.position.set(lane * GAME_CONFIG.LANE_WIDTH, h + 1.5, GAME_CONFIG.SPAWN_Z);
+            // Higher for medium
+            const cpuY = isMed ? h + 2.0 : h + 1.5;
+            cpu.position.set(lane * GAME_CONFIG.LANE_WIDTH, cpuY, GAME_CONFIG.SPAWN_Z);
             cpu.userData = { type: 'point', value: val };
             gr.scene.add(cpu);
             gr.points.push(cpu as THREE.Mesh);
@@ -700,17 +968,33 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
         userData.value = value;
         mesh.position.y = 2.2;
       } else { // powerup
-        const rand = Math.random();
-        let pTypeStr: string;
+        const types = ['shield', 'multiplier', 'slow', 'heart', 'dist', 'bomb'];
+        const existingTypes = gr.powerups.map(p => p.userData.powerupType);
         
-        if (rand < 0.05) { // 5% Heart
-          pTypeStr = 'heart';
-        } else if (rand < 0.35) { // 30% Shield
-          pTypeStr = 'shield';
-        } else if (rand < 0.65) { // 30% Multiplier
-          pTypeStr = 'multiplier';
-        } else { // 35% Slow
-          pTypeStr = 'slow';
+        // Rarity check for bomb (destruction bonus)
+        let availableTypes = types.filter(t => !existingTypes.includes(t));
+        
+        // If bomb is chosen, it has a 1/5 chance of actually spawning if selected randomly
+        // Better: weighted selection
+        const weights: Record<string, number> = {
+          'shield': 10,
+          'multiplier': 10,
+          'slow': 10,
+          'heart': 10,
+          'dist': 10,
+          'bomb': 10 // 5 times rarer than others
+        };
+
+        const totalWeight = availableTypes.reduce((acc, t) => acc + weights[t], 0);
+        let randWeight = Math.random() * totalWeight;
+        let pTypeStr = availableTypes[0];
+
+        for (const type of availableTypes) {
+          if (randWeight < weights[type]) {
+            pTypeStr = type;
+            break;
+          }
+          randWeight -= weights[type];
         }
 
         let powerupMesh: THREE.Object3D;
@@ -728,6 +1012,14 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
           color = GAME_CONFIG.COLORS.SLOWDOWN;
           powerupMesh = createSnailMeshPowerup(color);
           userData.powerupType = 'slow';
+        } else if (pTypeStr === 'dist') {
+          color = GAME_CONFIG.COLORS.DISTANCE_X2;
+          powerupMesh = createDistMeshPowerup(color);
+          userData.powerupType = 'dist';
+        } else if (pTypeStr === 'bomb') {
+          color = GAME_CONFIG.COLORS.DESTRUCTION;
+          powerupMesh = createBombMeshPowerup(color);
+          userData.powerupType = 'bomb';
         } else {
           color = GAME_CONFIG.COLORS.HEART;
           powerupMesh = createHeartMeshPowerup(color);
@@ -742,9 +1034,9 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
       mesh.position.z = GAME_CONFIG.SPAWN_Z;
       scene.add(mesh);
       
-      if (type === 'obstacle') gameRef.current.obstacles.push(mesh as THREE.Mesh);
-      else if (type === 'point') gameRef.current.points.push(mesh as THREE.Mesh);
-      else gameRef.current.powerups.push(mesh as THREE.Mesh);
+      if (type === 'obstacle') gr.obstacles.push(mesh as THREE.Mesh);
+      else if (type === 'point') gr.points.push(mesh as THREE.Mesh);
+      else gr.powerups.push(mesh as THREE.Mesh);
     };
 
     let lastTime = 0;
@@ -798,8 +1090,42 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
         
         gr.buildings.forEach(b => {
           b.position.z += effectiveSpeed;
-          if (b.position.z > 50) b.position.z = -550;
         });
+
+        // Pedestrians update
+        for (let i = gr.pedestrians.length - 1; i >= 0; i--) {
+          const p = gr.pedestrians[i];
+          p.position.z += effectiveSpeed + (p.userData.walkSpeed || 0);
+          
+          // Walking animation (bobbing)
+          p.position.y = Math.abs(Math.sin(time * 0.005 + i)) * 0.2;
+
+          if (p.position.z > 50) {
+            gr.scene.remove(p);
+            gr.pedestrians.splice(i, 1);
+          }
+        }
+
+        // Cleanup far buildings
+        for (let i = gr.buildings.length - 1; i >= 0; i--) {
+          if (gr.buildings[i].position.z > 50) {
+            gr.scene.remove(gr.buildings[i]);
+            gr.buildings.splice(i, 1);
+          }
+        }
+
+        if (gr.distance - lastBuildingZ > 60 && gr.buildings.length < 12) {
+          const b1 = createBuilding(GAME_CONFIG.SPAWN_Z, true);
+          const b2 = createBuilding(GAME_CONFIG.SPAWN_Z, false);
+          gr.buildings.push(b1, b2);
+          
+          // Spawn pedestrians occasionally (strict limit)
+          if (Math.random() > 0.7 && gr.pedestrians.length < 6) {
+            spawnPedestrian(GAME_CONFIG.SPAWN_Z);
+          }
+          
+          setLastBuildingZ(gr.distance);
+        }
 
         // Player animation (Running)
         const walkCycle = Math.sin(time * 0.012) * 0.7;
@@ -819,9 +1145,34 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
         gr.player.position.y = (gr.isJumping ? gr.player.position.y : bounce);
 
         // Distance score
-        const distGain = delta * 15;
+        let distGain = delta * 15;
+        if (gr.modifierDistMult > 0) distGain *= 2;
         gr.distance += distGain; 
         const currentDist = Math.floor(gr.distance);
+        
+        // Real-time achievement check
+        const achievements = [
+          { id: 'steps', title: 'First Steps', value: gr.distance, target: 100 },
+          { id: 'sprint', title: 'Sprint', value: gr.distance, target: 1000 },
+          { id: 'marathon', title: 'Marathon', value: gr.distance, target: 5000 },
+          { id: 'godspeed', title: 'Godspeed', value: gr.distance, target: 10000 },
+          { id: 'collector_1', title: 'Silicon Collector', value: gr.processors, target: 1000 },
+          { id: 'collector_2', title: 'System Admin', value: gr.processors, target: 5000 },
+          { id: 'collector_3', title: 'Mainframe Master', value: gr.processors, target: 20000 },
+          { id: 'collector_4', title: 'The Architect', value: gr.processors, target: 100000 },
+          { id: 'jumper_1', title: 'Bypasser', value: gr.obstaclesAvoided, target: 25 },
+          { id: 'jumper_2', title: 'Glitch Runner', value: gr.obstaclesAvoided, target: 100 },
+          { id: 'jumper_3', title: 'Firewall Breach', value: gr.obstaclesAvoided, target: 500 },
+          { id: 'jumper_4', title: 'Ghost in Shell', value: gr.obstaclesAvoided, target: 1000 },
+        ];
+
+        achievements.forEach(ach => {
+          if (ach.value >= ach.target && !achievementTriggeredRef.current[ach.id]) {
+            achievementTriggeredRef.current[ach.id] = true;
+            callbacksRef.current.onAchievementUnlock(ach.id, ach.title);
+          }
+        });
+
         if (currentDist !== Math.floor(gr.distance - distGain)) {
            setDistance(currentDist);
            callbacksRef.current.onScoreUpdate(currentDist, gr.processors);
@@ -841,6 +1192,16 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
         if (gr.modifierMultiplier > 0) {
           gr.modifierMultiplier -= delta;
           if (gr.modifierMultiplier <= 0) setActiveMultiplier(false);
+        }
+
+        if (gr.modifierDistMult > 0) {
+          gr.modifierDistMult -= delta;
+          if (gr.modifierDistMult <= 0) setActiveDistMult(false);
+        }
+
+        if (gr.modifierDestruction > 0) {
+          gr.modifierDestruction -= delta;
+          if (gr.modifierDestruction <= 0) setActiveDestruction(false);
         }
 
         // Handle invulnerability blink
@@ -866,22 +1227,53 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
           const obs = gr.obstacles[i];
           obs.position.z += effectiveSpeed;
           
+          // Lateral movement for patrolling obstacles
+          if (obs.userData.isMoving) {
+            const patrolRange = GAME_CONFIG.LANE_WIDTH;
+            const patrolSpeed = effectiveSpeed * 0.4;
+            obs.position.x += obs.userData.moveDir * patrolSpeed;
+            
+            // Boundary bounce
+            const offset = obs.position.x - obs.userData.startX;
+            if (Math.abs(offset) > patrolRange) {
+              obs.userData.moveDir *= -1;
+               obs.position.x = obs.userData.startX + patrolRange * Math.sign(offset);
+            }
+          }
+
           // Tightened horizontal check: only check if in roughly the same lane
           const dx = Math.abs(gr.player.position.x - obs.position.x);
           const dz = Math.abs(gr.player.position.z - obs.position.z);
           
-          if (gr.invulnerable <= 0 && dx < 2.0 && dz < 2.0) {
+          // Wide obstacles block center + 1 lane on each side (~10-12 units wide)
+          const hitWidth = obs.userData.isWide ? (GAME_CONFIG.LANE_WIDTH * 1.4) : 2.0;
+
+          if (gr.invulnerable <= 0 && dx < hitWidth && dz < 2.0) {
             // Collision check
             let hit = true;
             if (obs.userData.isLow && gr.player.position.y > 1.8) {
               hit = false; // Jumped over low obstacle
             } else if (obs.userData.isMed && gr.player.position.y > 3.8) {
               hit = false; // Jumped over medium obstacle
+            } else if (obs.userData.isMoving && gr.player.position.y > 3.8) {
+              hit = false; // Can jump over moving bot if high enough
             } else if (obs.userData.isTall) {
               hit = true; // Cannot jump over tall
+            } else if (obs.userData.isWide) {
+              hit = true; // Cannot jump over wide barrier (too wide for safety)
             }
 
             if (hit) {
+              if (gr.modifierDestruction > 0) {
+                // Destroy obstacle
+                triggerDestructionEffect(obs.position, GAME_CONFIG.COLORS.DESTRUCTION);
+                scene.remove(obs);
+                gr.obstacles.splice(i, 1);
+                gr.obstaclesAvoided++;
+                AudioManager.playCollect(); // Replace with explosion sound if available, but collect is fine for now
+                continue;
+              }
+
               if (gr.modifierShield > 0) {
                 gr.modifierShield = 0;
                 setActiveShield(false);
@@ -902,6 +1294,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
           }
 
           if (obs.position.z > GAME_CONFIG.DESPAWN_Z) {
+            gr.obstaclesAvoided++;
             scene.remove(obs);
             gr.obstacles.splice(i, 1);
           }
@@ -954,6 +1347,14 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
             } else if (pType === 'slow') {
               gr.modifierSlow = 8;
               setActiveSlow(true);
+              AudioManager.playPowerup();
+            } else if (pType === 'dist') {
+              gr.modifierDistMult = 10;
+              setActiveDistMult(true);
+              AudioManager.playPowerup();
+            } else if (pType === 'bomb') {
+              gr.modifierDestruction = 10;
+              setActiveDestruction(true);
               AudioManager.playPowerup();
             } else if (pType === 'heart') {
               if (livesRef.current < maxLives) {
@@ -1084,6 +1485,26 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
               >
                 <div className="w-1 h-1 md:w-1.5 md:h-1.5 rounded-full bg-white animate-pulse" />
                 <span className="text-[7px] md:text-[9px] text-white font-black uppercase tracking-tighter">Snail</span>
+              </motion.div>
+            )}
+            {activeDistMult && (
+              <motion.div 
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="bg-cyan-600/60 backdrop-blur-md px-2 py-0.5 md:py-1 rounded border border-cyan-400/30 flex items-center gap-1.5"
+              >
+                <div className="w-1 h-1 md:w-1.5 md:h-1.5 rounded-full bg-white animate-pulse" />
+                <span className="text-[7px] md:text-[9px] text-white font-black uppercase tracking-tighter">x2 Dist</span>
+              </motion.div>
+            )}
+            {activeDestruction && (
+              <motion.div 
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="bg-orange-600/60 backdrop-blur-md px-2 py-0.5 md:py-1 rounded border border-orange-400/30 flex items-center gap-1.5"
+              >
+                <div className="w-1 h-1 md:w-1.5 md:h-1.5 rounded-full bg-white animate-pulse" />
+                <span className="text-[7px] md:text-[9px] text-white font-black uppercase tracking-tighter">Destroyer</span>
               </motion.div>
             )}
           </div>

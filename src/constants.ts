@@ -19,7 +19,10 @@ export const GAME_CONFIG = {
     MULTIPLIER: 0xa855f7,
     SLOWDOWN: 0x10b981,
     HEART: 0xef4444,
+    DESTRUCTION: 0xf97316, // Orange
+    DISTANCE_X2: 0x06b6d4, // Cyan/Teal
   },
   JUMP_FORCE: 0.5,
   GRAVITY: -0.02,
+  MODIFIER_DURATION: 10,
 };
