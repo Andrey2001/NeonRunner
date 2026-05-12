@@ -38,10 +38,10 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
     lArm: THREE.Object3D;
     rArm: THREE.Object3D;
     shieldMesh: THREE.Mesh;
-    obstacles: THREE.Mesh[];
-    points: THREE.Mesh[];
-    powerups: THREE.Mesh[];
-    buildings: THREE.Mesh[];
+    obstacles: THREE.Object3D[];
+    points: THREE.Object3D[];
+    powerups: THREE.Object3D[];
+    buildings: THREE.Object3D[];
     grid: THREE.GridHelper;
     speed: number;
     distance: number;
@@ -53,7 +53,9 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
     animationId: number;
     lastSpawnZ: number[];
     isJumping: boolean;
+    isSliding: boolean;
     jumpVelocity: number;
+    slideTimer: number;
     modifierShield: number;
     modifierMultiplier: number;
     modifierSlow: number;
@@ -65,7 +67,18 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
 
   useEffect(() => {
     isPausedRef.current = isPaused;
+    if (isPaused || gameRef.current?.isGameOver) {
+      AudioManager.stopMusic();
+    } else {
+      AudioManager.startMusic();
+    }
   }, [isPaused]);
+
+  useEffect(() => {
+    return () => {
+      AudioManager.stopMusic();
+    };
+  }, []);
 
   const gameRef = grRef; // Alias for consistency
 
@@ -106,7 +119,16 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
       if (gr.currentLane < 2) gr.currentLane = (gr.currentLane + 1) as Lane;
     } else if ((e.key === 'ArrowUp' || e.key === 'w') && !gr.isJumping) {
       gr.isJumping = true;
+      gr.isSliding = false;
+      gr.slideTimer = 0;
       gr.jumpVelocity = GAME_CONFIG.JUMP_FORCE;
+    } else if (e.key === 'ArrowDown' || e.key === 's') {
+      gr.isSliding = true;
+      gr.slideTimer = 45;
+      if (gr.isJumping) {
+        gr.jumpVelocity = -0.4; // Dive down
+      }
+      AudioManager.playSlide();
     }
   }, [isPaused]);
 
@@ -146,7 +168,17 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
         if (dy < 0 && !gr.isJumping) {
           // Swipe up
           gr.isJumping = true;
+          gr.isSliding = false;
+          gr.slideTimer = 0;
           gr.jumpVelocity = GAME_CONFIG.JUMP_FORCE;
+        } else if (dy > 0) {
+          // Swipe down
+          gr.isSliding = true;
+          gr.slideTimer = 45;
+          if (gr.isJumping) {
+            gr.jumpVelocity = -0.4;
+          }
+          AudioManager.playSlide();
         }
       }
     }
@@ -411,12 +443,12 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
         
         const sideOffset = left ? w/2 + 0.05 : -w/2 - 0.05;
         window.position.set(sideOffset, (Math.random() - 0.5) * (h - 15), (Math.random() - 0.5) * (d - 10));
-        window.rotation.y = Math.PI / 2;
+        window.rotation.y = left ? Math.PI / 2 : -Math.PI / 2;
         building.add(window);
       }
 
       // Large neon sign (very rare)
-      if (Math.random() > 0.85) {
+      if (Math.random() > 0.5) {
         const signH = 3 + Math.random() * 3;
         const signW = 5 + Math.random() * 5;
         const signColor = [0x00ffff, 0xff00ff][Math.floor(Math.random() * 2)];
@@ -434,7 +466,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
         
         const signX = left ? w/2 + 1.5 : -w/2 - 1.5;
         sign.position.set(signX, h/2 + (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
-        sign.rotation.y = Math.PI / 2;
+        sign.rotation.y = left ? Math.PI / 2 : -Math.PI / 2;
         building.add(sign);
       }
       
@@ -520,7 +552,9 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
       animationId: 0,
       lastSpawnZ: [0, 0, 0, 0, 0], // For 5 lanes
       isJumping: false,
+      isSliding: false,
       jumpVelocity: 0,
+      slideTimer: 0,
       modifierShield: 0,
       modifierMultiplier: 0,
       modifierSlow: 0,
@@ -807,60 +841,113 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
       const gr = gameRef.current;
       const currentZ = gr.distance;
       
-      // Pattern needs more space than single entities
-      const minDistance = 40; 
+      // Pattern needs significantly more space than single entities to ensure passability
+      // and prevent visual overlap.
+      const minDistance = 65; 
       if (gr.lastSpawnZ.some(z => currentZ - z < minDistance)) return;
 
       if (type === 'gate') {
         const freeLaneIndex = Math.floor(Math.random() * 5);
         for (let i = 0; i < 5; i++) {
-          if (i === freeLaneIndex) continue;
-          
           const lane = (i - 2) as Lane;
-          const geometry = new THREE.BoxGeometry(2.5, 14, 2.5);
+          gr.lastSpawnZ[i] = currentZ;
+
+          if (i === freeLaneIndex) {
+            // Spawn a processor in the free lane
+            const val = 150;
+            const cpu = createProcessorMesh(2, 0xfacc15, val);
+            cpu.rotation.x = -Math.PI / 2.5;
+            cpu.position.set(lane * GAME_CONFIG.LANE_WIDTH, 2.5, GAME_CONFIG.SPAWN_Z);
+            cpu.userData = { type: 'point', value: val };
+            gr.scene.add(cpu);
+            gr.points.push(cpu);
+            continue;
+          }
+          
+          const geometry = new THREE.BoxGeometry(2.8, 16, 2.5); // Taller and slightly wider for "gate"
           const color = GAME_CONFIG.COLORS.OBSTACLE;
           const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ 
             color, 
             emissive: color, 
-            emissiveIntensity: 1,
-            roughness: 0.2
+            emissiveIntensity: 1.2,
+            roughness: 0.1,
+            metalness: 0.5
           }));
           mesh.userData = { type: 'obstacle', isTall: true };
-          mesh.position.set(lane * GAME_CONFIG.LANE_WIDTH, 7, GAME_CONFIG.SPAWN_Z);
+          mesh.position.set(lane * GAME_CONFIG.LANE_WIDTH, 8, GAME_CONFIG.SPAWN_Z);
           gr.scene.add(mesh);
-          gr.obstacles.push(mesh as THREE.Mesh);
-          gr.lastSpawnZ[i] = currentZ;
+          gr.obstacles.push(mesh);
         }
       } else if (type === 'jump') {
         for (let i = 0; i < 5; i++) {
           const lane = (i - 2) as Lane;
-          const geometry = new THREE.BoxGeometry(2.5, 1.8, 2.8);
+          gr.lastSpawnZ[i] = currentZ;
+          
+          const geometry = new THREE.BoxGeometry(3.2, 1.8, 2.0); // Wider for full row jump
           const color = GAME_CONFIG.COLORS.OBSTACLE;
           const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ 
             color, 
             emissive: color, 
-            emissiveIntensity: 1,
+            emissiveIntensity: 1.5,
             roughness: 0.2
           }));
           mesh.userData = { type: 'obstacle', isLow: true };
           mesh.position.set(lane * GAME_CONFIG.LANE_WIDTH, 0.9, GAME_CONFIG.SPAWN_Z);
           
-          // Spawn CPU over every second jump
-          if (Math.random() > 0.4) {
+          // Row of collection chips above the jump
+          if (i % 2 === 0) {
             const val = 100;
             const cpu = createProcessorMesh(1.5, 0xfacc15, val);
             cpu.rotation.x = -Math.PI / 2.5;
             cpu.position.set(lane * GAME_CONFIG.LANE_WIDTH, 2.8, GAME_CONFIG.SPAWN_Z);
             cpu.userData = { type: 'point', value: val };
             gr.scene.add(cpu);
-            gr.points.push(cpu as THREE.Mesh);
+            gr.points.push(cpu);
           }
 
           gr.scene.add(mesh);
-          gr.obstacles.push(mesh as THREE.Mesh);
-          gr.lastSpawnZ[i] = currentZ;
+          gr.obstacles.push(mesh);
         }
       }
+    };
+
+    const createUnderpassMesh = () => {
+      const group = new THREE.Group();
+      
+      // Top bar (the one that hits if not sliding)
+      // Lowered from 8 to 5.5 to make it look impassable without sliding
+      const topGeo = new THREE.BoxGeometry(GAME_CONFIG.LANE_WIDTH * 0.95, 4, 1.5);
+      const topMat = new THREE.MeshStandardMaterial({ 
+        color: 0xff0000, 
+        emissive: 0xff0000, 
+        emissiveIntensity: 2.0 
+      });
+      const top = new THREE.Mesh(topGeo, topMat);
+      top.position.y = 5.5; 
+      group.add(top);
+
+      // Side pillars - moved closer to stay within the lane
+      const pillarGeo = new THREE.BoxGeometry(0.6, 8, 0.6);
+      const pillarMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
+      
+      const leftPillar = new THREE.Mesh(pillarGeo, pillarMat);
+      leftPillar.position.set(-GAME_CONFIG.LANE_WIDTH * 0.45, 4, 0);
+      group.add(leftPillar);
+      
+      const rightPillar = new THREE.Mesh(pillarGeo, pillarMat);
+      rightPillar.position.set(GAME_CONFIG.LANE_WIDTH * 0.45, 4, 0);
+      group.add(rightPillar);
+
+      // Glow effect under the bar
+      const glowGeo = new THREE.PlaneGeometry(GAME_CONFIG.LANE_WIDTH * 0.9, 0.2);
+      const glowMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
+      const glow = new THREE.Mesh(glowGeo, glowMat);
+      glow.position.y = 3.6;
+      glow.rotation.x = Math.PI / 2;
+      group.add(glow);
+
+      group.userData = { type: 'obstacle', isUnderpass: true };
+      return group;
     };
 
     const spawnEntity = (type: 'obstacle' | 'point' | 'powerup') => {
@@ -871,7 +958,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
       
       // Check for overlap in this lane locally (simple Z buffer check)
       const currentZ = gr.distance;
-      if (currentZ - gr.lastSpawnZ[laneIndex] < 15) return;
+      if (currentZ - gr.lastSpawnZ[laneIndex] < 25) return;
       gr.lastSpawnZ[laneIndex] = currentZ;
 
       let mesh: THREE.Object3D;
@@ -879,7 +966,11 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
 
       if (type === 'obstacle') {
         const rand = Math.random();
-        const isTall = rand > 0.85;
+        if (rand < 0.25) {
+          mesh = createUnderpassMesh();
+          userData = { ...userData, ...mesh.userData };
+        } else {
+          const isTall = rand > 0.85;
         const isLow = !isTall && rand > 0.4;
         const isMed = !isTall && !isLow && rand > 0.2;
         const isWide = !isTall && !isLow && !isMed && rand > 0.1; // New: blocks 2 lanes
@@ -901,6 +992,9 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
           geometry = new THREE.BoxGeometry(GAME_CONFIG.LANE_WIDTH * 2.8, 6, 3.5);
           userData.isWide = true;
           h = 6;
+          // Mark adjacent lanes as spawned too
+          if (laneIndex > 0) gr.lastSpawnZ[laneIndex - 1] = currentZ;
+          if (laneIndex < 4) gr.lastSpawnZ[laneIndex + 1] = currentZ;
         } else if (isMoving) {
           geometry = new THREE.BoxGeometry(2.5, 4, 2.5);
           userData.isMoving = true;
@@ -945,10 +1039,11 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
             cpu.position.set(lane * GAME_CONFIG.LANE_WIDTH, cpuY, GAME_CONFIG.SPAWN_Z);
             cpu.userData = { type: 'point', value: val };
             gr.scene.add(cpu);
-            gr.points.push(cpu as THREE.Mesh);
+            gr.points.push(cpu);
           }
         }
-      } else if (type === 'point') {
+      }
+    } else if (type === 'point') {
         const rand = Math.random();
         let size: number;
         let value: number;
@@ -1034,9 +1129,9 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
       mesh.position.z = GAME_CONFIG.SPAWN_Z;
       scene.add(mesh);
       
-      if (type === 'obstacle') gr.obstacles.push(mesh as THREE.Mesh);
-      else if (type === 'point') gr.points.push(mesh as THREE.Mesh);
-      else gr.powerups.push(mesh as THREE.Mesh);
+      if (type === 'obstacle') gr.obstacles.push(mesh);
+      else if (type === 'point') gr.points.push(mesh);
+      else gr.powerups.push(mesh);
     };
 
     let lastTime = 0;
@@ -1060,7 +1155,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
           gr.modifierSlow -= delta;
           if (gr.modifierSlow <= 0) setActiveSlow(false);
         } else {
-          gr.speed += GAME_CONFIG.SPEED_INCREMENT;
+          gr.speed = Math.min(gr.speed + GAME_CONFIG.SPEED_INCREMENT * delta * 60, GAME_CONFIG.MAX_SPEED);
         }
 
         // Jump physics
@@ -1076,15 +1171,20 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
             gr.isJumping = false;
             gr.jumpVelocity = 0;
           }
-        } else {
-          gr.player.position.y = Math.abs(Math.sin(time * 0.015)) * 0.3; // Bounce when running
+        }
+
+        // Slide physics
+        if (gr.isSliding) {
+           gr.slideTimer -= delta * 60;
+           if (gr.slideTimer <= 0) gr.isSliding = false;
         }
 
         gr.targetX = gr.currentLane * GAME_CONFIG.LANE_WIDTH;
-        gr.player.position.x += (gr.targetX - gr.player.position.x) * 0.15;
+        const lerpFactor = 1 - Math.pow(1 - 0.15, delta * 60);
+        gr.player.position.x += (gr.targetX - gr.player.position.x) * lerpFactor;
         
         // Background motion
-        const effectiveSpeed = gr.modifierSlow > 0 ? gr.speed * 0.5 : gr.speed;
+        const effectiveSpeed = (gr.modifierSlow > 0 ? gr.speed * 0.5 : gr.speed) * delta * 60;
         gr.grid.position.z += effectiveSpeed;
         if (gr.grid.position.z > 5) gr.grid.position.z %= 5;
         
@@ -1127,25 +1227,38 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
           setLastBuildingZ(gr.distance);
         }
 
-        // Player animation (Running)
-        const walkCycle = Math.sin(time * 0.012) * 0.7;
-        const bounce = Math.abs(Math.sin(time * 0.012)) * 0.25;
+        // Player animation (Running/Sliding)
+        const animTime = time * 0.012;
+        let walkCycle = Math.sin(animTime) * 0.7;
+        let bounce = Math.abs(Math.sin(animTime)) * 0.25;
         
-        // Running motion
-        gr.lLeg.rotation.x = walkCycle;
-        gr.rLeg.rotation.x = -walkCycle;
-        gr.lArm.rotation.x = -walkCycle * 0.9;
-        gr.rArm.rotation.x = walkCycle * 0.9;
+        if (gr.isSliding) {
+          // Sliding pose
+          gr.lLeg.rotation.x = -Math.PI / 2;
+          gr.rLeg.rotation.x = -Math.PI / 2;
+          gr.lArm.rotation.x = Math.PI / 2;
+          gr.rArm.rotation.x = Math.PI / 2;
+          gr.player.rotation.x = 0.6; // Deep lean
+          gr.player.scale.y = 0.5; // Squash the whole model slightly for clearance
+          gr.player.position.y = (gr.isJumping ? gr.player.position.y : 0.2);
+        } else {
+          gr.player.scale.y = 1.0;
+          // Running motion
+          gr.lLeg.rotation.x = walkCycle;
+          gr.rLeg.rotation.x = -walkCycle;
+          gr.lArm.rotation.x = -walkCycle * 0.9;
+          gr.rArm.rotation.x = walkCycle * 0.9;
+          
+          gr.player.rotation.x = 0.15 + bounce * 0.2; 
+          gr.player.position.y = (gr.isJumping ? gr.player.position.y : bounce);
+        }
         
         // Dynamic leaning
-        gr.player.rotation.z = THREE.MathUtils.lerp(gr.player.rotation.z, (gr.player.position.x - gr.targetX) * 0.1, 0.1);
-        gr.player.rotation.x = 0.15 + bounce * 0.2; // Leaning forward more when bouncing
-        
-        // Shoulder sway
-        gr.player.position.y = (gr.isJumping ? gr.player.position.y : bounce);
+        const leanLerp = 1 - Math.pow(1 - 0.1, delta * 60);
+        gr.player.rotation.z = THREE.MathUtils.lerp(gr.player.rotation.z, (gr.player.position.x - gr.targetX) * 0.1, leanLerp);
 
         // Distance score
-        let distGain = delta * 15;
+        let distGain = effectiveSpeed;
         if (gr.modifierDistMult > 0) distGain *= 2;
         gr.distance += distGain; 
         const currentDist = Math.floor(gr.distance);
@@ -1173,6 +1286,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
           }
         });
 
+        // Cap distance set so we don't spam state with tiny floats
         if (currentDist !== Math.floor(gr.distance - distGain)) {
            setDistance(currentDist);
            callbacksRef.current.onScoreUpdate(currentDist, gr.processors);
@@ -1213,13 +1327,15 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
         }
 
         // Spawn logic
+        const timeScale = delta * 60;
         const patternChance = Math.random();
-        if (patternChance < 0.006) {
+        // Even higher frequency for patterns (0.02 base)
+        if (patternChance < 0.02 * timeScale) {
           spawnPattern(Math.random() > 0.5 ? 'gate' : 'jump');
         } else {
-          if (Math.random() < GAME_CONFIG.OBSTACLE_SPAWN_RATE) spawnEntity('obstacle');
-          if (Math.random() < GAME_CONFIG.POINT_SPAWN_RATE) spawnEntity('point');
-          if (Math.random() < GAME_CONFIG.POWERUP_SPAWN_RATE) spawnEntity('powerup');
+          if (Math.random() < GAME_CONFIG.OBSTACLE_SPAWN_RATE * timeScale) spawnEntity('obstacle');
+          if (Math.random() < GAME_CONFIG.POINT_SPAWN_RATE * timeScale) spawnEntity('point');
+          if (Math.random() < GAME_CONFIG.POWERUP_SPAWN_RATE * timeScale) spawnEntity('powerup');
         }
 
         // Process Obstacles
@@ -1251,7 +1367,10 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
           if (gr.invulnerable <= 0 && dx < hitWidth && dz < 2.0) {
             // Collision check
             let hit = true;
-            if (obs.userData.isLow && gr.player.position.y > 1.8) {
+            if (obs.userData.isUnderpass) {
+              // Underpass requires sliding
+              hit = !gr.isSliding;
+            } else if (obs.userData.isLow && gr.player.position.y > 1.8) {
               hit = false; // Jumped over low obstacle
             } else if (obs.userData.isMed && gr.player.position.y > 3.8) {
               hit = false; // Jumped over medium obstacle
@@ -1285,6 +1404,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
                 if (livesRef.current <= 1) {
                   gr.isGameOver = true;
                   AudioManager.playLifeLost();
+                  AudioManager.stopMusic();
                   callbacksRef.current.onGameOver();
                 } else {
                   AudioManager.playHurt();
@@ -1306,7 +1426,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
           p.position.z += effectiveSpeed;
           // Hovering AND rotating
           p.position.y = 2.2 + Math.sin(time * 0.004 + i) * 0.2;
-          p.rotation.y += 0.05;
+          p.rotation.y += 0.05 * delta * 60;
           
           if (gr.player.position.distanceTo(p.position) < 3.5) {
             const val = (p.userData.value || 50) * (gr.modifierMultiplier > 0 ? 2 : 1);
@@ -1332,7 +1452,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
           p.position.z += effectiveSpeed;
           // Hovering + rotating
           p.position.y = 2.0 + Math.sin(time * 0.005 + i) * 0.3;
-          p.rotation.y += 0.04;
+          p.rotation.y += 0.04 * delta * 60;
 
           if (gr.player.position.distanceTo(p.position) < 3.0) {
             const pType = p.userData.powerupType;
@@ -1442,10 +1562,10 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
                 <motion.div
                   key={i}
                   animate={{ 
-                    scale: i < lives ? [1, 1.1, 1] : 1,
+                    scale: i < lives ? 1 : 0.8,
                     opacity: i < lives ? 1 : 0.2 
                   }}
-                  transition={{ repeat: i < lives ? Infinity : 0, duration: 2 }}
+                  transition={{ duration: 0.3 }}
                 >
                   <Heart 
                     className={`w-3.5 h-3.5 md:w-5 md:h-5 ${i < lives ? 'text-pink-500 fill-pink-500 drop-shadow-[0_0_8px_rgba(236,72,153,0.8)]' : 'text-slate-700'}`} 

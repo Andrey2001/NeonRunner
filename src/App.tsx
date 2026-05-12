@@ -6,6 +6,8 @@
 import React, { useState, useCallback } from 'react';
 import { NeonRunner } from './components/NeonRunner';
 import { GameMenu } from './components/GameMenu';
+import { AudioManager } from './services/audioService';
+import { TutorialOverlay } from './components/TutorialOverlay';
 
 export default function App() {
   const [isStarted, setIsStarted] = useState(false);
@@ -16,6 +18,10 @@ export default function App() {
     const saved = localStorage.getItem('neon_runner_total_processors');
     return saved ? parseInt(saved, 10) : 0;
   });
+  const [hasSeenTutorial, setHasSeenTutorial] = useState<boolean>(() => {
+    return localStorage.getItem('neon_runner_tutorial_done') === 'true';
+  });
+  const [showTutorial, setShowTutorial] = useState(false);
   const [lives, setLives] = useState(3);
   const [maxLives, setMaxLives] = useState(3);
   const [isPaused, setIsPaused] = useState(false);
@@ -45,6 +51,11 @@ export default function App() {
   });
 
   const startGame = useCallback(() => {
+    if (!hasSeenTutorial) {
+      setShowTutorial(true);
+      return;
+    }
+
     setIsStarted(true);
     setIsGameOver(false);
     setScore(0);
@@ -55,6 +66,44 @@ export default function App() {
     setExtraLifePurchased(false); 
     setIsPaused(false);
     setGameId(prev => prev + 1);
+    
+    // Resume/Start audio on user interaction
+    AudioManager.startMusic();
+  }, [extraLifePurchased]);
+
+  const completeTutorial = useCallback(() => {
+    localStorage.setItem('neon_runner_tutorial_done', 'true');
+    setHasSeenTutorial(true);
+    setShowTutorial(false);
+    setIsStarted(true);
+    setIsGameOver(false);
+    setScore(0);
+    setSessionProcessors(0);
+    const startLives = extraLifePurchased ? 4 : 3;
+    setLives(startLives);
+    setMaxLives(startLives);
+    setExtraLifePurchased(false); 
+    setIsPaused(false);
+    setGameId(prev => prev + 1);
+    AudioManager.startMusic();
+  }, [extraLifePurchased]);
+
+  const skipTutorial = useCallback(() => {
+    localStorage.setItem('neon_runner_tutorial_done', 'true');
+    setHasSeenTutorial(true);
+    setShowTutorial(false);
+    // After skip, just start the game
+    setIsStarted(true);
+    setIsGameOver(false);
+    setScore(0);
+    setSessionProcessors(0);
+    const startLives = extraLifePurchased ? 4 : 3;
+    setLives(startLives);
+    setMaxLives(startLives);
+    setExtraLifePurchased(false); 
+    setIsPaused(false);
+    setGameId(prev => prev + 1);
+    AudioManager.startMusic();
   }, [extraLifePurchased]);
 
   const buyExtraLife = useCallback(() => {
@@ -187,6 +236,13 @@ export default function App() {
         </div>
       )}
 
+      {showTutorial && (
+        <TutorialOverlay 
+          onComplete={completeTutorial}
+          onSkip={skipTutorial}
+        />
+      )}
+
       {!isStarted && !isGameOver && (
         <GameMenu 
           type="start" 
@@ -203,6 +259,7 @@ export default function App() {
           onBuySkin={buySkin}
           onSelectSkin={handleSetActiveSkin}
           onClaimAchievement={claimAchievement}
+          onReplayTutorial={() => setShowTutorial(true)}
         />
       )}
       
@@ -226,6 +283,7 @@ export default function App() {
           onSelectSkin={handleSetActiveSkin}
           onClaimAchievement={claimAchievement}
           onExit={() => setIsGameOver(false)}
+          onReplayTutorial={() => setShowTutorial(true)}
         />
       )}
 

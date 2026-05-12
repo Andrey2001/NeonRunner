@@ -19,6 +19,9 @@ interface MenuProps {
   onBuySkin?: (skin: string) => void;
   onSelectSkin?: (skin: string) => void;
   onExit?: () => void;
+  onReplayTutorial?: () => void;
+  onClaimAchievement?: (id: string, reward: number) => void;
+  claimedAchievements?: string[];
 }
 
 export const GameMenu: React.FC<MenuProps> = ({ 
@@ -39,7 +42,8 @@ export const GameMenu: React.FC<MenuProps> = ({
   onBuySkin,
   onSelectSkin,
   onClaimAchievement,
-  onExit
+  onExit,
+  onReplayTutorial
 }) => {
   const [view, setView] = useState<'main' | 'shop' | 'achievements'>('main');
 
@@ -411,6 +415,13 @@ export const GameMenu: React.FC<MenuProps> = ({
               >
                 <Award size={14} />
                 Achievement Log
+              </button>
+
+              <button 
+                onClick={onReplayTutorial}
+                className="flex items-center justify-center gap-2 py-2 text-[8px] text-white/20 hover:text-white/40 transition-all uppercase font-black tracking-widest mt-2"
+              >
+                Show Instructions
               </button>
             </>
           ) : (
