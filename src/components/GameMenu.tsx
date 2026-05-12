@@ -375,79 +375,63 @@ export const GameMenu: React.FC<MenuProps> = ({
           </div>
         )}
 
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 mt-4">
           <button 
             onClick={onAction}
-            className={`group relative inline-flex items-center justify-center gap-4 px-8 py-3.5 ${type === 'start' ? 'bg-cyan-400' : 'bg-pink-500'} text-black font-black rounded-xl overflow-hidden transition-all hover:scale-105 active:scale-95 shadow-[0_15px_30px_-5px_rgba(0,0,0,0.5)]`}
+            className={`group relative flex items-center justify-center gap-4 w-full py-6 mb-2 ${type === 'start' ? 'bg-cyan-400 shadow-[0_0_40px_rgba(34,211,238,0.4)]' : 'bg-pink-500 shadow-[0_0_40px_rgba(236,72,153,0.4)]'} text-black font-black rounded-2xl overflow-hidden transition-all hover:scale-[1.02] active:scale-95 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.5)]`}
           >
-            <div className="absolute inset-0 bg-white/30 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12" />
-            {type === 'start' ? (
-              <>
-                <Play className="w-5 h-5 fill-black" />
-                <span className="tracking-widest text-sm">INITIALIZE</span>
-              </>
-            ) : (
-              <>
-                <RotateCcw className="w-5 h-5" />
-                <span className="tracking-widest text-sm">REBOOT</span>
-              </>
-            )}
+            <div className="absolute inset-0 bg-white/40 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 skew-x-12" />
+            <div className="flex items-center gap-4">
+              {type === 'start' ? (
+                <>
+                  <Play className="w-8 h-8 fill-black" strokeWidth={3} />
+                  <span className="text-3xl tracking-tighter italic font-black uppercase">RUN</span>
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="w-8 h-8" strokeWidth={3} />
+                  <span className="text-3xl tracking-tighter italic font-black uppercase">REBOOT</span>
+                </>
+              )}
+            </div>
           </button>
 
           {type === 'start' ? (
             <>
               <button 
                 onClick={() => setView('shop')}
-                className="group relative flex items-center justify-center gap-3 py-3.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 hover:text-white hover:bg-cyan-500/20 hover:border-cyan-400/50 transition-all text-xs font-black uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(34,211,238,0.1)]"
+                className="group relative flex items-center justify-center gap-3 py-4 rounded-2xl border border-white/10 bg-white/5 text-white/70 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all text-xs font-black uppercase tracking-[0.2em]"
               >
-                <ShoppingBag size={16} className="group-hover:scale-110 transition-transform" />
-                Upgrade System
-                <motion.div 
-                  animate={{ opacity: [0.3, 0.6, 0.3] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                  className="absolute inset-0 rounded-xl border border-cyan-400/50"
-                />
+                <ShoppingBag size={18} className="group-hover:scale-110 transition-transform opacity-50 group-hover:opacity-100" />
+                Hardware Shop
               </button>
 
               <button 
                 onClick={() => setView('achievements')}
-                className="flex items-center justify-center gap-2 py-3 rounded-xl border border-white/10 text-white/50 hover:text-white hover:bg-white/5 transition-all text-[10px] font-black uppercase tracking-widest"
+                className="group relative flex items-center justify-center gap-3 py-4 rounded-2xl border border-white/10 bg-white/5 text-white/70 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all text-xs font-black uppercase tracking-[0.2em]"
               >
-                <Award size={14} />
-                Achievement Log
+                <Award size={18} className="group-hover:scale-110 transition-transform opacity-50 group-hover:opacity-100" />
+                Achievements
               </button>
 
               <button 
                 onClick={onReplayTutorial}
-                className="flex items-center justify-center gap-2 py-2 text-[8px] text-white/20 hover:text-white/40 transition-all uppercase font-black tracking-widest mt-2"
+                className="group relative flex items-center justify-center gap-3 py-4 rounded-2xl border border-white/10 bg-white/5 text-white/70 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all text-xs font-black uppercase tracking-[0.2em]"
               >
-                Show Instructions
+                Instructions
               </button>
             </>
           ) : (
             <button 
               onClick={onExit}
-              className="flex items-center justify-center gap-2 py-3 rounded-xl border border-white/10 text-white/50 hover:text-white hover:bg-white/5 transition-all text-[10px] font-bold uppercase tracking-widest"
+              className="group relative flex items-center justify-center gap-3 py-4 rounded-2xl border border-white/10 bg-white/5 text-white/70 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all text-xs font-black uppercase tracking-[0.2em]"
             >
-              Back to Menu
+              <ArrowLeft size={18} className="group-hover:scale-110 transition-transform opacity-50 group-hover:opacity-100" />
+              Main Menu
             </button>
           )}
         </div>
 
-        <div className="mt-8 flex justify-center gap-6">
-          <div className="flex flex-col items-center gap-2">
-            <div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center text-[10px] font-bold text-white/40">W</div>
-            <span className="text-[9px] text-white/30 font-black uppercase tracking-widest">Jump</span>
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center text-[10px] font-bold text-white/40">A</div>
-            <span className="text-[9px] text-white/30 font-black uppercase tracking-widest">Left</span>
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center text-[10px] font-bold text-white/40">D</div>
-            <span className="text-[9px] text-white/30 font-black uppercase tracking-widest">Right</span>
-          </div>
-        </div>
       </motion.div>
     </div>
   );

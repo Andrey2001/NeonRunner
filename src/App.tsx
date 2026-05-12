@@ -181,11 +181,7 @@ export default function App() {
     }
   }, [earnedAchievements, claimedAchievements]);
 
-  const handleGameOver = useCallback(() => {
-    setIsGameOver(true);
-    setIsStarted(false);
-    
-    // Accumulate total processors (only session ones, achievements are claimed manually now)
+  const recordSession = useCallback(() => {
     setTotalProcessors(prev => {
       const newTotal = prev + sessionProcessors;
       localStorage.setItem('neon_runner_total_processors', newTotal.toString());
@@ -201,17 +197,18 @@ export default function App() {
     setPurchasedBuffs([]); // Consumed
   }, [score, sessionProcessors]);
 
+  const handleGameOver = useCallback(() => {
+    recordSession();
+    setIsGameOver(true);
+    setIsStarted(false);
+  }, [recordSession]);
+
   const handleQuit = useCallback(() => {
-    setTotalProcessors(prev => {
-      const newTotal = prev + sessionProcessors;
-      localStorage.setItem('neon_runner_total_processors', newTotal.toString());
-      return newTotal;
-    });
-    setPurchasedBuffs([]); // Consumed
+    recordSession();
     setIsStarted(false);
     setIsGameOver(false);
     setIsPaused(false);
-  }, [sessionProcessors]);
+  }, [recordSession]);
 
   const handleLifeLost = useCallback((newLives: number) => {
     setLives(newLives);

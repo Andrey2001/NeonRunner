@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion } from 'motion/react';
-import { Heart, Pause, Play } from 'lucide-react';
+import { Heart, Pause, Play, ArrowLeft } from 'lucide-react';
 import * as THREE from 'three';
 import { GAME_CONFIG } from '../constants';
 import { Lane } from '../types';
@@ -45,6 +45,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
     grid: THREE.GridHelper;
     speed: number;
     distance: number;
+    lastBuildingZ: number;
     processors: number;
     obstaclesAvoided: number;
     currentLane: Lane;
@@ -87,7 +88,6 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
   const [activeSlow, setActiveSlow] = useState(false);
   const [activeDestruction, setActiveDestruction] = useState(false);
   const [activeDistMult, setActiveDistMult] = useState(false);
-  const [lastBuildingZ, setLastBuildingZ] = useState(0);
 
   useEffect(() => {
     // Apply purchased buffs immediately if the component just mounted
@@ -437,11 +437,13 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
         const winMat = new THREE.MeshStandardMaterial({ 
           color: winColor, 
           emissive: winColor, 
-          emissiveIntensity: 1.5,
+          emissiveIntensity: 3.0,
+          transparent: true,
+          opacity: 0.9
         });
         const window = new THREE.Mesh(winGeo, winMat);
         
-        const sideOffset = left ? w/2 + 0.05 : -w/2 - 0.05;
+        const sideOffset = left ? w/2 + 0.1 : -w/2 - 0.1;
         window.position.set(sideOffset, (Math.random() - 0.5) * (h - 15), (Math.random() - 0.5) * (d - 10));
         window.rotation.y = left ? Math.PI / 2 : -Math.PI / 2;
         building.add(window);
@@ -544,6 +546,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
       lArm, rArm, shieldMesh,
       speed: GAME_CONFIG.INITIAL_SPEED,
       distance: 0,
+      lastBuildingZ: 0,
       processors: 0,
       obstaclesAvoided: 0,
       currentLane: 0 as Lane,
@@ -834,6 +837,22 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
         requestAnimationFrame(animateParticles);
       };
       animateParticles();
+    };
+
+    const disposeObject = (obj: THREE.Object3D) => {
+      obj.traverse((node) => {
+        if (node instanceof THREE.Mesh) {
+          if (node.geometry) node.geometry.dispose();
+          if (node.material) {
+            if (Array.isArray(node.material)) {
+              node.material.forEach((mat) => mat.dispose());
+            } else {
+              node.material.dispose();
+            }
+          }
+        }
+      });
+      scene.remove(obj);
     };
 
     const spawnPattern = (type: 'gate' | 'jump') => {
@@ -1201,7 +1220,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
           p.position.y = Math.abs(Math.sin(time * 0.005 + i)) * 0.2;
 
           if (p.position.z > 50) {
-            gr.scene.remove(p);
+            disposeObject(p);
             gr.pedestrians.splice(i, 1);
           }
         }
@@ -1209,12 +1228,12 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
         // Cleanup far buildings
         for (let i = gr.buildings.length - 1; i >= 0; i--) {
           if (gr.buildings[i].position.z > 50) {
-            gr.scene.remove(gr.buildings[i]);
+            disposeObject(gr.buildings[i]);
             gr.buildings.splice(i, 1);
           }
         }
 
-        if (gr.distance - lastBuildingZ > 60 && gr.buildings.length < 12) {
+        if (gr.distance - gr.lastBuildingZ > 60 && gr.buildings.length < 12) {
           const b1 = createBuilding(GAME_CONFIG.SPAWN_Z, true);
           const b2 = createBuilding(GAME_CONFIG.SPAWN_Z, false);
           gr.buildings.push(b1, b2);
@@ -1224,7 +1243,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
             spawnPedestrian(GAME_CONFIG.SPAWN_Z);
           }
           
-          setLastBuildingZ(gr.distance);
+          gr.lastBuildingZ = gr.distance;
         }
 
         // Player animation (Running/Sliding)
@@ -1287,7 +1306,8 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
         });
 
         // Cap distance set so we don't spam state with tiny floats
-        if (currentDist !== Math.floor(gr.distance - distGain)) {
+        // Throttle UI update to every 10 meters OR if a significant chunk has passed
+        if (currentDist !== Math.floor(gr.distance - distGain) && currentDist % 10 === 0) {
            setDistance(currentDist);
            callbacksRef.current.onScoreUpdate(currentDist, gr.processors);
         }
@@ -1386,7 +1406,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
               if (gr.modifierDestruction > 0) {
                 // Destroy obstacle
                 triggerDestructionEffect(obs.position, GAME_CONFIG.COLORS.DESTRUCTION);
-                scene.remove(obs);
+                disposeObject(obs);
                 gr.obstacles.splice(i, 1);
                 gr.obstaclesAvoided++;
                 AudioManager.playCollect(); // Replace with explosion sound if available, but collect is fine for now
@@ -1405,6 +1425,10 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
                   gr.isGameOver = true;
                   AudioManager.playLifeLost();
                   AudioManager.stopMusic();
+                  // Ensure final score is accurate before game over
+                  const finalDist = Math.floor(gr.distance);
+                  setDistance(finalDist);
+                  callbacksRef.current.onScoreUpdate(finalDist, gr.processors);
                   callbacksRef.current.onGameOver();
                 } else {
                   AudioManager.playHurt();
@@ -1415,7 +1439,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
 
           if (obs.position.z > GAME_CONFIG.DESPAWN_Z) {
             gr.obstaclesAvoided++;
-            scene.remove(obs);
+            disposeObject(obs);
             gr.obstacles.splice(i, 1);
           }
         }
@@ -1438,10 +1462,10 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
             setProcessors(gr.processors);
             callbacksRef.current.onScoreUpdate(currentDist, gr.processors);
             
-            scene.remove(p);
+            disposeObject(p);
             gr.points.splice(i, 1);
           } else if (p.position.z > GAME_CONFIG.DESPAWN_Z) {
-            scene.remove(p);
+            disposeObject(p);
             gr.points.splice(i, 1);
           }
         }
@@ -1482,10 +1506,10 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
                 AudioManager.playCollect();
               }
             }
-            scene.remove(p);
+            disposeObject(p);
             gr.powerups.splice(i, 1);
           } else if (p.position.z > GAME_CONFIG.DESPAWN_Z) {
-            scene.remove(p);
+            disposeObject(p);
             gr.powerups.splice(i, 1);
           }
         }
@@ -1546,13 +1570,22 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
 
         {/* TOP RIGHT: HEALTH & CONTROLS */}
         <div className="absolute top-4 right-4 md:top-8 md:right-8 flex flex-col items-end gap-3 pointer-events-auto">
-          {/* Pause Button */}
-          <button 
-            onClick={onTogglePause}
-            className="bg-black/60 backdrop-blur-md p-2 md:p-3 rounded-xl border border-white/10 text-white/50 hover:text-white transition-all active:scale-95"
-          >
-            <Pause className="w-4 h-4 md:w-6 md:h-6 fill-white" />
-          </button>
+          {/* Game Controls */}
+          <div className="flex gap-2">
+            <button 
+              onClick={onTogglePause}
+              className="bg-black/60 backdrop-blur-md p-2 md:p-3 rounded-xl border border-white/10 text-white/50 hover:text-white transition-all active:scale-95 pointer-events-auto"
+            >
+              {isPaused ? <Play className="w-4 h-4 md:w-6 md:h-6 fill-white" /> : <Pause className="w-4 h-4 md:w-6 md:h-6 fill-white" />}
+            </button>
+            <button 
+              onClick={onQuit}
+              className="bg-red-500/20 backdrop-blur-md p-2 md:p-3 rounded-xl border border-red-500/30 text-red-500/50 hover:text-red-500 hover:bg-red-500/30 transition-all active:scale-95 pointer-events-auto"
+              title="Exit Game"
+            >
+              <ArrowLeft className="w-4 h-4 md:w-6 md:h-6" />
+            </button>
+          </div>
 
           {/* Stability (Lives) */}
           <div className="bg-black/60 backdrop-blur-md px-3 md:px-5 py-1.5 md:py-2.5 rounded-xl border border-white/10 flex flex-col items-end">

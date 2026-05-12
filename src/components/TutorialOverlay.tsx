@@ -26,23 +26,16 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete, on
       bg: "bg-pink-400/20"
     },
     {
-      title: "Slide",
-      description: "Press S / Arrow Down or Swipe Down to slide under laser barriers.",
+      title: "Slide / Roll",
+      description: "Press S / Arrow Down or Swipe Down to slide under high laser barriers.",
       icon: ArrowBigDown,
       color: "text-amber-400",
       bg: "bg-amber-400/20"
     },
     {
-      title: "Memory Chips",
-      description: "Collect chips for points: Yellow (50), Purple (100), Blue (250).",
+      title: "Visual Guide",
+      description: "Chips: Yellow (+50), Purple (+100), Blue (+250). Hazards: Red barriers (Jump or Slide). Powerups: Shield (Blue), 2x XP (Purple), Slow (Green), Burst (Orange).",
       icon: Cpu,
-      color: "text-yellow-400",
-      bg: "bg-yellow-400/20"
-    },
-    {
-      title: "Powerups",
-      description: "Shields, 2x CPU Boosts, Slow-motion, and Sonic Blasts help you survive longer.",
-      icon: Zap,
       color: "text-emerald-400",
       bg: "bg-emerald-400/20"
     },
