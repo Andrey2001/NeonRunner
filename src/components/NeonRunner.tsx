@@ -1069,11 +1069,11 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
         let color: number;
 
         if (rand > 0.9) { // I9 (Large)
-          size = 2.0; value = 250; color = 0x3b82f6; // Blue i9
+          size = 2.0; value = 250; color = 0xfacc15; // All yellow gold
         } else if (rand > 0.6) { // I7 (Med)
-          size = 1.4; value = 100; color = 0xa855f7; // Purple i7
+          size = 1.4; value = 100; color = 0xfacc15; 
         } else { // I5 (Small)
-          size = 1.0; value = 50; color = 0xfacc15; // Yellow i5
+          size = 1.0; value = 50; color = 0xfacc15; 
         }
         
         mesh = createProcessorMesh(size, color, value);
@@ -1577,13 +1577,6 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
               className="bg-black/60 backdrop-blur-md p-2 md:p-3 rounded-xl border border-white/10 text-white/50 hover:text-white transition-all active:scale-95 pointer-events-auto"
             >
               {isPaused ? <Play className="w-4 h-4 md:w-6 md:h-6 fill-white" /> : <Pause className="w-4 h-4 md:w-6 md:h-6 fill-white" />}
-            </button>
-            <button 
-              onClick={onQuit}
-              className="bg-red-500/20 backdrop-blur-md p-2 md:p-3 rounded-xl border border-red-500/30 text-red-500/50 hover:text-red-500 hover:bg-red-500/30 transition-all active:scale-95 pointer-events-auto"
-              title="Exit Game"
-            >
-              <ArrowLeft className="w-4 h-4 md:w-6 md:h-6" />
             </button>
           </div>
 

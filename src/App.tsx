@@ -22,6 +22,7 @@ export default function App() {
     return localStorage.getItem('neon_runner_tutorial_done') === 'true';
   });
   const [showTutorial, setShowTutorial] = useState(false);
+  const [isTutorialFromMenu, setIsTutorialFromMenu] = useState(false);
   const [lives, setLives] = useState(3);
   const [maxLives, setMaxLives] = useState(3);
   const [isPaused, setIsPaused] = useState(false);
@@ -52,6 +53,7 @@ export default function App() {
 
   const startGame = useCallback(() => {
     if (!hasSeenTutorial) {
+      setIsTutorialFromMenu(false);
       setShowTutorial(true);
       return;
     }
@@ -71,28 +73,16 @@ export default function App() {
     AudioManager.startMusic();
   }, [extraLifePurchased]);
 
-  const completeTutorial = useCallback(() => {
+  const finishTutorial = useCallback(() => {
     localStorage.setItem('neon_runner_tutorial_done', 'true');
     setHasSeenTutorial(true);
     setShowTutorial(false);
-    setIsStarted(true);
-    setIsGameOver(false);
-    setScore(0);
-    setSessionProcessors(0);
-    const startLives = extraLifePurchased ? 4 : 3;
-    setLives(startLives);
-    setMaxLives(startLives);
-    setExtraLifePurchased(false); 
-    setIsPaused(false);
-    setGameId(prev => prev + 1);
-    AudioManager.startMusic();
-  }, [extraLifePurchased]);
+    
+    if (isTutorialFromMenu) {
+      setIsTutorialFromMenu(false);
+      return;
+    }
 
-  const skipTutorial = useCallback(() => {
-    localStorage.setItem('neon_runner_tutorial_done', 'true');
-    setHasSeenTutorial(true);
-    setShowTutorial(false);
-    // After skip, just start the game
     setIsStarted(true);
     setIsGameOver(false);
     setScore(0);
@@ -104,7 +94,10 @@ export default function App() {
     setIsPaused(false);
     setGameId(prev => prev + 1);
     AudioManager.startMusic();
-  }, [extraLifePurchased]);
+  }, [extraLifePurchased, isTutorialFromMenu]);
+
+  const completeTutorial = finishTutorial;
+  const skipTutorial = finishTutorial;
 
   const buyExtraLife = useCallback(() => {
     if (totalProcessors >= 100000 && !extraLifePurchased) {
@@ -208,6 +201,7 @@ export default function App() {
     setIsStarted(false);
     setIsGameOver(false);
     setIsPaused(false);
+    window.history.pushState(null, '', window.location.pathname);
   }, [recordSession]);
 
   const handleLifeLost = useCallback((newLives: number) => {
@@ -218,6 +212,27 @@ export default function App() {
     setScore(newScore);
     setSessionProcessors(newProcessors);
   }, []);
+
+  // Back button handling
+  React.useEffect(() => {
+    // Initial state
+    window.history.pushState(null, '', window.location.pathname);
+
+    const handlePopState = () => {
+      // If in a sub-view (game started, game over, or tutorial open), go back to main menu
+      if (isStarted || isGameOver || showTutorial) {
+        setIsStarted(false);
+        setIsGameOver(false);
+        setShowTutorial(false);
+        setIsPaused(false);
+        // Push state again to keep the "back" trap active
+        window.history.pushState(null, '', window.location.pathname);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isStarted, isGameOver, showTutorial]);
 
   return (
     <main className="w-full h-screen bg-black relative">
@@ -256,7 +271,10 @@ export default function App() {
           onBuySkin={buySkin}
           onSelectSkin={handleSetActiveSkin}
           onClaimAchievement={claimAchievement}
-          onReplayTutorial={() => setShowTutorial(true)}
+          onReplayTutorial={() => {
+            setIsTutorialFromMenu(true);
+            setShowTutorial(true);
+          }}
         />
       )}
       
@@ -280,7 +298,10 @@ export default function App() {
           onSelectSkin={handleSetActiveSkin}
           onClaimAchievement={claimAchievement}
           onExit={() => setIsGameOver(false)}
-          onReplayTutorial={() => setShowTutorial(true)}
+          onReplayTutorial={() => {
+            setIsTutorialFromMenu(true);
+            setShowTutorial(true);
+          }}
         />
       )}
 

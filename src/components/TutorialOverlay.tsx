@@ -33,15 +33,22 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete, on
       bg: "bg-amber-400/20"
     },
     {
-      title: "Visual Guide",
-      description: "Chips: Yellow (+50), Purple (+100), Blue (+250). Hazards: Red barriers (Jump or Slide). Powerups: Shield (Blue), 2x XP (Purple), Slow (Green), Burst (Orange).",
+      title: "Processors",
+      description: "Collect Memory Processors for points. All are gold, but larger ones (+100, +250) are more valuable than small ones (+50).",
       icon: Cpu,
+      color: "text-yellow-400",
+      bg: "bg-yellow-400/20"
+    },
+    {
+      title: "Powerups",
+      description: "Shields (Blue), 2x XP (Purple), Slow-motion (Green), Sonic Blasts (Orange), Distance Boosts (Cyan), and Hearts (Red) help you survive and score more.",
+      icon: Zap,
       color: "text-emerald-400",
       bg: "bg-emerald-400/20"
     },
     {
       title: "Hazards",
-      description: "Avoid red barriers and bots. Some must be jumped, others require a slide!",
+      description: "Avoid red barriers. Low ones must be jumped, but high laser curtains require a Slide/Roll to pass!",
       icon: Skull,
       color: "text-red-500",
       bg: "bg-red-500/20"
