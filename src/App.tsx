@@ -197,9 +197,10 @@ export default function App() {
   }, [recordSession]);
 
   const handleQuit = useCallback(() => {
+    AudioManager.stopMusic();
     recordSession();
     setIsStarted(false);
-    setIsGameOver(false);
+    setIsGameOver(true);
     setIsPaused(false);
     window.history.pushState(null, '', window.location.pathname);
   }, [recordSession]);

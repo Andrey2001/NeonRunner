@@ -319,7 +319,7 @@ export const GameMenu: React.FC<MenuProps> = ({
             </div>
           ) : (
             <span className="px-3 py-1 bg-pink-500/10 text-pink-500 text-[10px] font-black tracking-[0.3em] uppercase rounded-full border border-pink-500/20">
-              System Breached
+              Session Ended
             </span>
           )}
         </div>
@@ -327,23 +327,23 @@ export const GameMenu: React.FC<MenuProps> = ({
         <h1 className="text-4xl md:text-5xl font-black text-white mb-4 tracking-tighter uppercase italic leading-none">
           Neon<br />
           <span className={type === 'start' ? 'text-cyan-400' : 'text-pink-500'}>
-            {type === 'start' ? 'Runner' : 'Failure'}
+            {type === 'start' ? 'Runner' : 'Game Over'}
           </span>
         </h1>
         
         {type === 'gameover' && (
           <div className="mb-6 space-y-4">
             <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-              <div className="flex justify-between items-end mb-4">
+              <div className="grid grid-cols-2 gap-4 mb-4">
                 <div className="text-left">
-                  <p className="text-white/40 font-sans uppercase tracking-[0.4em] text-[8px] mb-1">Final Distance</p>
-                  <p className="text-3xl font-bold text-white tabular-nums tracking-tighter">
+                  <p className="text-white/40 font-sans uppercase tracking-[0.4em] text-[8px] mb-1">Distance</p>
+                  <p className="text-2xl md:text-3xl font-bold text-white tabular-nums tracking-tighter break-all">
                     {score?.toLocaleString()}m
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-white/40 font-sans uppercase tracking-[0.4em] text-[8px] mb-1">Session CPUs</p>
-                  <p className="text-3xl font-bold text-yellow-400 tabular-nums tracking-tighter">
+                  <p className="text-white/40 font-sans uppercase tracking-[0.4em] text-[8px] mb-1">CPUs</p>
+                  <p className="text-2xl md:text-3xl font-bold text-yellow-400 tabular-nums tracking-tighter break-all">
                     +{processors?.toLocaleString()}
                   </p>
                 </div>
@@ -351,7 +351,7 @@ export const GameMenu: React.FC<MenuProps> = ({
               
               <div className="pt-3 border-t border-white/10 text-center">
                 <p className="text-white/40 font-sans uppercase tracking-[0.4em] text-[8px] mb-1">Total Bank</p>
-                <p className="text-lg font-bold text-yellow-500/80 tabular-nums tracking-tighter">
+                <p className="text-lg md:text-xl font-bold text-yellow-500/80 tabular-nums tracking-tighter">
                   {totalProcessors.toLocaleString()} CPUs
                 </p>
               </div>

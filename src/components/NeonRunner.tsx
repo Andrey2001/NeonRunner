@@ -930,39 +930,125 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
       }
     };
 
+    const createObstacleMesh = (w: number, h: number, d: number, color: number, isMoving: boolean = false) => {
+      const group = new THREE.Group();
+      
+      // Main core
+      const coreGeo = new THREE.BoxGeometry(w * 0.9, h, d * 0.9);
+      const coreMat = new THREE.MeshStandardMaterial({ 
+        color: 0x111111,
+        metalness: 0.9,
+        roughness: 0.1
+      });
+      const core = new THREE.Mesh(coreGeo, coreMat);
+      group.add(core);
+
+      // Outer plating/glow edges
+      const plateGeo = new THREE.BoxGeometry(w, h * 0.8, d);
+      const plateMat = new THREE.MeshStandardMaterial({ 
+        color: color,
+        emissive: color,
+        emissiveIntensity: isMoving ? 3.0 : 1.5,
+        transparent: true,
+        opacity: 0.8
+      });
+      const plates = new THREE.Mesh(plateGeo, plateMat);
+      group.add(plates);
+
+      // Neon stripes
+      const stripeCount = Math.floor(h / 2) + 1;
+      const stripeGeo = new THREE.BoxGeometry(w * 1.05, 0.1, d * 1.05);
+      const stripeMat = new THREE.MeshStandardMaterial({ 
+        color: 0xffffff,
+        emissive: 0xffffff,
+        emissiveIntensity: 5.0
+      });
+
+      for (let i = 0; i < stripeCount; i++) {
+        const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+        stripe.position.y = (i / (stripeCount - 1) - 0.5) * (h * 0.9);
+        group.add(stripe);
+      }
+
+      if (isMoving) {
+        // Additional moving scanner light
+        const scanner = new THREE.Mesh(
+          new THREE.BoxGeometry(w * 1.1, 0.3, d * 1.1),
+          new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 10 })
+        );
+        scanner.position.y = 0;
+        group.add(scanner);
+      }
+
+      return group;
+    };
+
     const createUnderpassMesh = () => {
       const group = new THREE.Group();
       
-      // Top bar (the one that hits if not sliding)
-      // Lowered from 8 to 5.5 to make it look impassable without sliding
-      const topGeo = new THREE.BoxGeometry(GAME_CONFIG.LANE_WIDTH * 0.95, 4, 1.5);
-      const topMat = new THREE.MeshStandardMaterial({ 
+      // Heavy Emitter Frame (Top)
+      const frameGeo = new THREE.BoxGeometry(GAME_CONFIG.LANE_WIDTH * 1.0, 1.2, 1.5);
+      const frameMat = new THREE.MeshStandardMaterial({ 
+        color: 0x222222,
+        metalness: 0.8,
+        roughness: 0.2
+      });
+      const topFrame = new THREE.Mesh(frameGeo, frameMat);
+      topFrame.position.y = 8.0; 
+      group.add(topFrame);
+
+      // Neon details on frame
+      const detailGeo = new THREE.BoxGeometry(GAME_CONFIG.LANE_WIDTH * 0.9, 0.2, 1.6);
+      const detailMat = new THREE.MeshStandardMaterial({ 
         color: 0xff0000, 
         emissive: 0xff0000, 
-        emissiveIntensity: 2.0 
+        emissiveIntensity: 3.0 
       });
-      const top = new THREE.Mesh(topGeo, topMat);
-      top.position.y = 5.5; 
-      group.add(top);
+      const detail = new THREE.Mesh(detailGeo, detailMat);
+      detail.position.y = 8.0;
+      group.add(detail);
 
-      // Side pillars - moved closer to stay within the lane
-      const pillarGeo = new THREE.BoxGeometry(0.6, 8, 0.6);
-      const pillarMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
+      // Side pillars - Industrial look
+      const pillarGeo = new THREE.BoxGeometry(0.5, 8, 0.8);
+      const pillarMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
       
       const leftPillar = new THREE.Mesh(pillarGeo, pillarMat);
-      leftPillar.position.set(-GAME_CONFIG.LANE_WIDTH * 0.45, 4, 0);
+      leftPillar.position.set(-GAME_CONFIG.LANE_WIDTH * 0.48, 4, 0);
       group.add(leftPillar);
       
       const rightPillar = new THREE.Mesh(pillarGeo, pillarMat);
-      rightPillar.position.set(GAME_CONFIG.LANE_WIDTH * 0.45, 4, 0);
+      rightPillar.position.set(GAME_CONFIG.LANE_WIDTH * 0.48, 4, 0);
       group.add(rightPillar);
 
-      // Glow effect under the bar
-      const glowGeo = new THREE.PlaneGeometry(GAME_CONFIG.LANE_WIDTH * 0.9, 0.2);
-      const glowMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
+      // Horizontal Laser Beams (7 units)
+      const beamCount = 7;
+      const laserGeo = new THREE.CylinderGeometry(0.05, 0.05, GAME_CONFIG.LANE_WIDTH * 0.95, 8);
+      const laserMat = new THREE.MeshBasicMaterial({ 
+        color: 0xff0000,
+        transparent: true,
+        opacity: 0.9
+      });
+
+      for (let i = 0; i < beamCount; i++) {
+        const laser = new THREE.Mesh(laserGeo, laserMat);
+        // Stack them vertically starting from the top frame down
+        const yPos = 7.4 - (i * 0.6);
+        laser.position.set(0, yPos, 0);
+        laser.rotation.z = Math.PI / 2;
+        group.add(laser);
+      }
+
+      // Ground glow contact point
+      const glowGeo = new THREE.PlaneGeometry(GAME_CONFIG.LANE_WIDTH * 0.9, 0.8);
+      const glowMat = new THREE.MeshBasicMaterial({ 
+        color: 0xff0000, 
+        transparent: true, 
+        opacity: 0.2, 
+        side: THREE.DoubleSide 
+      });
       const glow = new THREE.Mesh(glowGeo, glowMat);
-      glow.position.y = 3.6;
-      glow.rotation.x = Math.PI / 2;
+      glow.position.y = 0.05;
+      glow.rotation.x = -Math.PI / 2;
       group.add(glow);
 
       group.userData = { type: 'obstacle', isUnderpass: true };
@@ -990,63 +1076,41 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
           userData = { ...userData, ...mesh.userData };
         } else {
           const isTall = rand > 0.85;
-        const isLow = !isTall && rand > 0.4;
-        const isMed = !isTall && !isLow && rand > 0.2;
-        const isWide = !isTall && !isLow && !isMed && rand > 0.1; // New: blocks 2 lanes
-        const isMoving = !isTall && !isLow && !isMed && !isWide; // New: moves sideways
+          const isLow = !isTall && rand > 0.4;
+          const isMed = !isTall && !isLow && rand > 0.2;
+          const isWide = !isTall && !isLow && !isMed && rand > 0.1;
+          const isMoving = !isTall && !isLow && !isMed && !isWide;
 
-        let geometry: THREE.BufferGeometry;
-        let h = 4;
-        
-        if (isTall) {
-          geometry = new THREE.BoxGeometry(2.5, 12, 2.5);
-          userData.isTall = true;
-          h = 12;
-        } else if (isLow) {
-          geometry = new THREE.BoxGeometry(2.5, 1.5, 2.5);
-          userData.isLow = true;
-          h = 1.5;
-        } else if (isWide) {
-          // Block exactly 3 lanes (center lane + 1 left + 1 right)
-          geometry = new THREE.BoxGeometry(GAME_CONFIG.LANE_WIDTH * 2.8, 6, 3.5);
-          userData.isWide = true;
-          h = 6;
-          // Mark adjacent lanes as spawned too
-          if (laneIndex > 0) gr.lastSpawnZ[laneIndex - 1] = currentZ;
-          if (laneIndex < 4) gr.lastSpawnZ[laneIndex + 1] = currentZ;
-        } else if (isMoving) {
-          geometry = new THREE.BoxGeometry(2.5, 4, 2.5);
-          userData.isMoving = true;
-          userData.moveDir = laneIndex > 2 ? -1 : 1;
-          userData.startX = lane * GAME_CONFIG.LANE_WIDTH;
-          h = 4;
-        } else {
-          geometry = new THREE.BoxGeometry(2.5, 4, 3.5);
-          userData.isMed = true;
-          h = 4;
-        }
-        
-        const color = isMoving ? 0xff3333 : (isWide ? 0xffcc33 : GAME_CONFIG.COLORS.OBSTACLE);
-        mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ 
-          color, 
-          emissive: color, 
-          emissiveIntensity: isMoving ? 2 : 1,
-          roughness: 0.2
-        }));
-        mesh.position.y = h / 2;
+          let w = 2.5, h = 4, d = 2.5;
+          
+          if (isTall) {
+            w = 2.5; h = 12; d = 2.5;
+            userData.isTall = true;
+          } else if (isLow) {
+            w = 2.5; h = 1.5; d = 2.5;
+            userData.isLow = true;
+          } else if (isWide) {
+            w = GAME_CONFIG.LANE_WIDTH * 2.8; h = 6; d = 3.5;
+            userData.isWide = true;
+            if (laneIndex > 0) gr.lastSpawnZ[laneIndex - 1] = currentZ;
+            if (laneIndex < 4) gr.lastSpawnZ[laneIndex + 1] = currentZ;
+          } else if (isMoving) {
+            w = 2.5; h = 4; d = 2.5;
+            userData.isMoving = true;
+            userData.moveDir = laneIndex > 2 ? -1 : 1;
+            userData.startX = lane * GAME_CONFIG.LANE_WIDTH;
+          } else {
+            w = 2.5; h = 4; d = 3.5;
+            userData.isMed = true;
+          }
+          
+          const color = isMoving ? 0xff3333 : (isWide ? 0xffcc33 : GAME_CONFIG.COLORS.OBSTACLE);
+          mesh = createObstacleMesh(w, h, d, color, isMoving);
+          mesh.position.y = h / 2;
+          userData = { ...userData, ...mesh.userData };
 
-        // Visual for moving obstacle
-        if (isMoving) {
-          const scanner = new THREE.Mesh(
-            new THREE.BoxGeometry(2.6, 0.2, 2.6),
-            new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 5 })
-          );
-          scanner.position.y = 0.5;
-          mesh.add(scanner);
-        }
-
-        // Spawn CPU above jumpable obstacles
-        if (isLow || isMed || isMoving) {
+          // Spawn CPU above jumpable obstacles
+          if (isLow || isMed || isMoving) {
           const spawnChance = isMed ? 0.8 : 0.4;
           if (Math.random() < spawnChance) {
             const val = 100;
@@ -1561,7 +1625,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
             </p>
           </div>
           <div className="bg-black/60 backdrop-blur-md border-l-4 border-yellow-400 px-3 md:px-6 py-1.5 md:py-3 rounded-r-xl">
-            <p className="text-[7px] md:text-[10px] uppercase tracking-widest text-yellow-400 font-black">Memory Chips</p>
+            <p className="text-[7px] md:text-[10px] uppercase tracking-widest text-yellow-400 font-black">CPUs</p>
             <p className="text-xl md:text-3xl font-black tabular-nums tracking-tighter text-white">
               {processors.toLocaleString()}
             </p>
@@ -1683,7 +1747,11 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
               </button>
 
               <button 
-                onClick={onQuit}
+                onClick={() => {
+                  if (gameRef.current) gameRef.current.isGameOver = true;
+                  AudioManager.stopMusic();
+                  onQuit();
+                }}
                 className="w-full py-4 border border-white/10 text-white/50 hover:bg-white/5 hover:text-white rounded-xl transition-all font-black uppercase text-[10px] tracking-widest"
               >
                 Exit to Menu
@@ -1691,7 +1759,7 @@ export const NeonRunner: React.FC<GameProps> = ({ onScoreUpdate, onGameOver, onL
             </div>
 
             <p className="mt-8 text-[8px] text-white/20 font-mono leading-tight tracking-[0.2em] uppercase">
-              Memory chips saved successfully.<br/>
+              Session CPUs recorded successfully.<br/>
               Session data integrity verified.
             </p>
           </motion.div>

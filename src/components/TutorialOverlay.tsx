@@ -34,7 +34,7 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete, on
     },
     {
       title: "Processors",
-      description: "Collect Memory Processors for points. All are gold, but larger ones (+100, +250) are more valuable than small ones (+50).",
+      description: "Collect Memory CPUs for points. All are gold, but larger ones (+100, +250) are more valuable than small ones (+50).",
       icon: Cpu,
       color: "text-yellow-400",
       bg: "bg-yellow-400/20"
